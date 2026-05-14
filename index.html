@@ -166,9 +166,8 @@ const { useState, useEffect, useRef, useCallback } = React;
 const DEV_MODE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const TODAY = new Date().toISOString().slice(0,10);
 
-// DESARROLLO: limpiar bloqueo de intentos al recargar la página
-// TODO: eliminar esta línea antes de producción
-sessionStorage.removeItem('adm_att');
+// DESARROLLO: limpiar bloqueo de intentos al recargar la página (solo en localhost)
+if(DEV_MODE) sessionStorage.removeItem('adm_att');
 
 /* ════════════════════════════════════════════════════════════════
    CONFIGURACIÓN GOOGLE SHEETS
@@ -1762,6 +1761,7 @@ function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
 
   async function handleCheckin() {
     const rut=checkinRut.trim();if(!rut)return;
+    if(!validarRut(rut)){setCheckinMsg({type:'danger',text:'RUT inválido. Verifica el número y el dígito verificador.',teacher:null});return;}
     const cfg=getSPConfig();
     const teacher=DB.findTeacher(rut),isReg=DB.isReg(eventId,rut),hasAtt=DB.hasAtt(eventId,rut);
     if(hasAtt){setCheckinMsg({type:'warning',text:'Ya tiene asistencia registrada.',teacher});return;}
@@ -1833,11 +1833,10 @@ function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
     win.document.open(); win.document.write(html); win.document.close();
   }
 
+  const isClosed = DB.isClosed(eventId);
   const tabList=[{id:'inscritos',label:`Inscritos (${regs.length})`},{id:'asistencia',label:`Asistencia (${atts.length})`},
     ...(canCheck&&!isClosed?[{id:'checkin',label:'Check-in kiosco'}]:[]),
     {id:'exportar',label:'Exportar'}];  const msgC={success:['#DCFCE7','#15803D'],warning:['#FEF3C7','#B45309'],danger:['#FEE2E2','#B91C1C']};
-
-  const isClosed = DB.isClosed(eventId);
 
   return <div className="fade-in">
     <PageHeader back="Volver a Eventos" onBack={()=>navigate('a-eventos')} title={event.nombre}
@@ -2766,8 +2765,8 @@ function AdminLogin({onSuccess, onBack}) {
       att = { n: 0, ts: 0 };
     }
     const cfg = getSPConfig();
-    const u = 'Admin';   // TODO: reemplazar por cfg.adminUser al cierre del proyecto
-    const p = '123456';  // TODO: reemplazar por cfg.adminPass al cierre del proyecto
+    const u = cfg.adminUser || 'Admin';
+    const p = cfg.adminPass || '123456';
     if(user.trim() === u && pass === p) {
       sessionStorage.setItem(ATT_KEY, JSON.stringify({ n: 0, ts: 0 }));
       onSuccess();
@@ -2835,6 +2834,14 @@ function DocenteLogin({onSuccess, onBack}) {
   async function handleFind() {
     const q = input.trim();
     if(!q){ setError('Ingresa tu RUT o correo institucional'); return; }
+    // Validar formato RUT si no es correo
+    if(!q.includes('@')) {
+      const cleanRut = q.replace(/[^0-9kK]/g,'');
+      if(cleanRut.length >= 2 && !validarRut(q)) {
+        setError('RUT inválido. Verifica el número y el dígito verificador (ej: 12.345.678-9).');
+        return;
+      }
+    }
     setError(''); setLoading(true);
     let teacher = null;
     try {
@@ -2866,7 +2873,9 @@ function DocenteLogin({onSuccess, onBack}) {
         setFound({ rut:formatRut(q), nombre:'', email:'', especialidad:'', pin:'' });
         setStep('nuevo');
       } else {
-        setError('No encontramos ese RUT o correo. Verifica e intenta de nuevo.');
+        setError(q.includes('@')
+          ? 'No encontramos ese correo. Verifica e intenta de nuevo.'
+          : 'No encontramos ese RUT. Verifica e intenta de nuevo.');
       }
     }
   }
@@ -2971,10 +2980,15 @@ function DocenteLogin({onSuccess, onBack}) {
           <Field label="RUT o correo institucional" required error={error}
             hint="Ej: 12.345.678-9 · nombre@universidad.cl">
             <TInput value={input}
-              onChange={e=>setInput(e.target.value)}
+              onChange={e=>{ setInput(e.target.value); if(error) setError(''); }}
               onBlur={()=>{
                 const v=input.trim();
-                if(v && !v.includes('@')) setInput(formatRut(v));
+                if(v && !v.includes('@')) {
+                  const fmt=formatRut(v);
+                  setInput(fmt);
+                  if(fmt.replace(/[^0-9kK]/g,'').length>=2 && !validarRut(fmt))
+                    setError('RUT inválido. Verifica el dígito verificador.');
+                }
               }}
               autoFocus placeholder="RUT o correo"
               onKeyDown={e=>e.key==='Enter'&&handleFind()}/>
