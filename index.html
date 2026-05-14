@@ -1,0 +1,3284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://script.google.com https://script.googleusercontent.com; img-src 'self' data: https:; connect-src 'self' https://script.google.com https://script.googleusercontent.com;">
+  <title>Capacitaciones Docentes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --adm: #1E3A8A; --doc: #0D6E68; --bg: #F1F5F9; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: #0F172A; min-height: 100dvh; font-size: 14px; line-height: 1.5; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+    input:focus, select:focus, textarea:focus { border-color: #3B82F6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,.12); outline: none; }
+    button:focus-visible { outline: 2px solid #3B82F6; outline-offset: 2px; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
+    .fade-in  { animation: fadeIn  0.22s ease both; }
+    .slide-in { animation: slideIn 0.22s ease both; }
+    @media print { .no-print { display: none !important; } }
+    @media (max-width: 680px) {
+      .sidebar-desktop { display: none !important; }
+      .mob-nav { display: flex !important; }
+      .main-pad { padding: 20px 16px 80px !important; }
+    }
+    .mob-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+      background: #fff; border-top: 1px solid #E2E8F0; padding: 8px 4px calc(8px + env(safe-area-inset-bottom)); }
+    .ms-input { width: 100%; padding: 8px 10px; border: 1px solid #8a8a8a; font-size: 15px;
+      font-family: 'Segoe UI',sans-serif; outline: none; color: #1b1b1b; }
+    .ms-input:focus { border-color: #0067b8; box-shadow: 0 0 0 1px #0067b8; }
+    .ms-btn { background: #0067b8; color: #fff; border: none; padding: 8px 20px; font-size: 15px;
+      cursor: pointer; font-family: 'Segoe UI',sans-serif; font-weight: 600; }
+    .ms-btn:hover { background: #005a9e; }
+    .dot-pulse { display: flex; gap: 6px; justify-content: center; }
+    .dot-pulse span { width: 10px; height: 10px; border-radius: 50%; background: #0067b8; animation: blink .8s ease-in-out infinite alternate; }
+    .dot-pulse span:nth-child(2) { animation-delay: .2s; }
+    .dot-pulse span:nth-child(3) { animation-delay: .4s; }
+    .api-badge { font-family: monospace; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function () {
+  function init() {
+    if (localStorage.getItem('cap_v2')) return;
+    localStorage.setItem('cap_teachers', JSON.stringify([]));
+    localStorage.setItem('cap_events',   JSON.stringify([]));
+    localStorage.setItem('cap_regs',     JSON.stringify([]));
+    localStorage.setItem('cap_att',      JSON.stringify([]));
+    localStorage.setItem('cap_v2', '1');
+  }
+  init();
+
+  const uid  = () => Math.random().toString(36).slice(2, 9);
+  const get  = k  => JSON.parse(localStorage.getItem(k) || '[]');
+  const set  = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+  /* Normalize RUT to "NNNNNNN-D" regardless of dots / spacing */
+  const normRut = r => {
+    if(!r || typeof r !== 'string') return '';
+    const c = r.replace(/[.\s]/g, '').toUpperCase();
+    const body = c.slice(0, -1).replace(/-/g, '');
+    const dv   = c.slice(-1);
+    return body + '-' + dv;
+  };
+  const sameRut = (a, b) => {
+    if(!a || !b) return false;
+    return normRut(String(a)) === normRut(String(b));
+  };
+
+  /* Limpiar sesión corrupta al arrancar */
+  try {
+    const s = JSON.parse(localStorage.getItem('cap_session'));
+    if(s && s.role === 'docente' && !s.rut) {
+      localStorage.removeItem('cap_session');
+    }
+  } catch(e) {
+    localStorage.removeItem('cap_session');
+  }
+
+
+
+  window.DB = {
+    normRut,
+    sameRut,
+
+    /* Teachers */
+    teachers:    ()      => get('cap_teachers'),
+    findTeacher: rut     => get('cap_teachers').find(t => sameRut(t.rut, rut)),
+    addTeacher:  t       => { const arr = get('cap_teachers'); arr.push(t); set('cap_teachers', arr); },
+
+    /* Events */
+    events:      ()      => get('cap_events'),
+    event:       id      => get('cap_events').find(e => e.id === id),
+    addEvent:    e       => { const arr = get('cap_events'); arr.push({ ...e, id: e.id || ('e-' + uid()), updatedAt: Date.now() }); set('cap_events', arr); },
+    deleteEvent: id      => set('cap_events', get('cap_events').filter(e => e.id !== id)),
+    updateEvent: ev      => set('cap_events', get('cap_events').map(e => e.id === ev.id ? { ...e, ...ev, updatedAt: Date.now() } : e)),
+    setEstadoPublicacion: (eid, estado) => set('cap_events', get('cap_events').map(e => e.id === eid ? { ...e, estadoPublicacion: estado } : e)),
+
+    /* Registrations */
+    regs:        ()      => get('cap_regs'),
+    eventRegs:   eid     => get('cap_regs').filter(r => r.eid === eid),
+    teacherRegs: rut     => get('cap_regs').filter(r => sameRut(r.rut, rut)),
+    isReg:       (eid, rut) => get('cap_regs').some(r => r.eid === eid && sameRut(r.rut, rut)),
+    register:    (eid, rut) => { const arr = get('cap_regs'); arr.push({ id: 'r-' + uid(), eid, rut, fecha: new Date().toISOString().slice(0,10), registradoAt: Date.now() }); set('cap_regs', arr); },
+    unregister:  (eid, rut) => {
+      set('cap_regs', get('cap_regs').filter(r => !(r.eid === eid && sameRut(r.rut, rut))));
+      try { window.dispatchEvent(new CustomEvent('cap:datachange',{detail:'regs'})); } catch(e) {}
+    },
+
+    /* Attendance */
+    atts:        ()      => get('cap_att'),
+    eventAtts:   eid     => get('cap_att').filter(a => a.eid === eid && a.tipo !== 'no_asistio'),
+    teacherAtts: rut     => get('cap_att').filter(a => sameRut(a.rut, rut) && a.tipo !== 'no_asistio'),
+    hasAtt:      (eid, rut) => get('cap_att').some(a => a.eid === eid && sameRut(a.rut, rut) && a.tipo !== 'no_asistio'),
+    hasNoAtt:    (eid, rut) => get('cap_att').some(a => a.eid === eid && sameRut(a.rut, rut) && a.tipo === 'no_asistio'),
+    markAtt:     (eid, rut, noAsistio=false) => { const arr = get('cap_att'); arr.push({ id:(noAsistio?'na-':'a-') + uid(), eid, rut, fecha: new Date().toISOString().slice(0,10), tipo: noAsistio?'no_asistio':'asistio' }); set('cap_att', arr); },
+
+    /* Closed events */
+    closedEvents: () => { try{ return JSON.parse(localStorage.getItem('cap_closed')||'[]'); }catch{return [];} },
+    isClosed: eid => { try{ return JSON.parse(localStorage.getItem('cap_closed')||'[]').includes(eid); }catch{return false;} },
+    closeEvent: eid => {
+      const arr=JSON.parse(localStorage.getItem('cap_closed')||'[]');
+      if(!arr.includes(eid)){arr.push(eid);localStorage.setItem('cap_closed',JSON.stringify(arr));}
+      // Sincronizar estado a Google Sheets
+      const cfg=getSPConfig();
+      if(cfg.mode==='googlesheets'&&cfg.gsUrl){
+        const ev=get('cap_events').find(e=>e.id===eid);
+        if(ev) GS.update('Eventos',eid,sanitizeRow([ev.id,ev.nombre,ev.tipo,ev.fecha,ev.hora,ev.lugar,ev.cupos,ev.relator,ev.descripcion||'',new Date().toISOString().slice(0,10),'CERRADO',ev.duracion||60,ev.estadoPublicacion||'Abierto',ev.fechaApertura||''])).catch(()=>{});
+      }
+    },
+    reopenEvent: eid => {
+      const arr=JSON.parse(localStorage.getItem('cap_closed')||'[]').filter(x=>x!==eid);
+      localStorage.setItem('cap_closed',JSON.stringify(arr));
+      // Sincronizar reapertura a Google Sheets
+      const cfg=getSPConfig();
+      if(cfg.mode==='googlesheets'&&cfg.gsUrl){
+        const ev=get('cap_events').find(e=>e.id===eid);
+        if(ev){ const hoy=new Date().toISOString().slice(0,10); const est=ev.fecha>hoy?'Próximo':ev.fecha===hoy?'Hoy':'Realizado'; GS.update('Eventos',eid,sanitizeRow([ev.id,ev.nombre,ev.tipo,ev.fecha,ev.hora,ev.lugar,ev.cupos,ev.relator,ev.descripcion||'',hoy,est,ev.duracion||60,ev.estadoPublicacion||'Abierto',ev.fechaApertura||''])).catch(()=>{}); }
+      }
+    },
+
+    /* Limpia todos los datos locales */
+    reset: () => {
+      ['cap_teachers','cap_events','cap_regs','cap_att','cap_closed','cap_v2','cap_last_sync'].forEach(k => localStorage.removeItem(k));
+      // Nota: cap_sp_config (configuración GS) se preserva intencionalmente
+      init();
+    },
+  };
+})();
+
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+const DEV_MODE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const TODAY = new Date().toISOString().slice(0,10);
+
+// DESARROLLO: limpiar bloqueo de intentos al recargar la página
+// TODO: eliminar esta línea antes de producción
+sessionStorage.removeItem('adm_att');
+
+/* ════════════════════════════════════════════════════════════════
+   CONFIGURACIÓN GOOGLE SHEETS
+   Almacena modo, URL del Apps Script y credenciales del admin.
+   Persistido en localStorage bajo la clave SP_KEY.
+   ════════════════════════════════════════════════════════════════ */
+const SP_KEY = 'cap_sp_config';
+const SP_DEFAULTS = {
+  mode: 'local',      // 'local' | 'googlesheets'
+  gsUrl: '',          // Apps Script Web App URL
+  adminUser: 'Admin',
+  adminPass: '123456',
+};
+/* Ofusca/desofusca la URL del Apps Script en localStorage */
+const _enc = s => { try { return s ? btoa(encodeURIComponent(s)) : s; } catch { return s; } };
+const _dec = s => { try { return s ? decodeURIComponent(atob(s)) : s; } catch { return s; } };
+
+/* ════════════════════════════════════════════════════════════════
+   DEPLOY CONFIG — Editar UNA vez antes de distribuir el archivo.
+   ────────────────────────────────────────────────────────────────
+   gsUrl  : URL del Apps Script Web App (copiar desde "Implementar").
+            Si se deja vacío, el sistema arranca en modo local.
+   gsToken: Cadena secreta compartida con el Apps Script.
+            Debe coincidir exactamente con CAP_TOKEN en el script.
+            Ej: 'cap-2025-xK9m-P2qR' (inventa el tuyo, sin espacios).
+            Si se deja vacío, el sistema funciona sin protección de token.
+   ════════════════════════════════════════════════════════════════ */
+const DEPLOY_CONFIG = {
+  gsUrl:   'https://script.google.com/macros/s/AKfycbzKY73425zhtfOZ0c4vqZY_ohf5Ijtm2EPuHa9bMYeR-fQV9eAX_vc7HXO4p9xKRSNRxA/exec',         // ← pegar URL del Apps Script aquí
+  gsToken: 'rod123456',         // ← definir token secreto (mismo valor en Apps Script)
+};
+
+/* getSPConfig: fusiona SP_DEFAULTS → localStorage → DEPLOY_CONFIG
+   Si DEPLOY_CONFIG.gsUrl está configurado, el modo es siempre
+   'googlesheets' automáticamente — no requiere campo mode separado.
+   El token NUNCA se guarda en localStorage (reducir exposición). */
+const getSPConfig = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SP_KEY));
+    const cfg = { ...SP_DEFAULTS, ...raw };
+    if (cfg.gsUrl)     cfg.gsUrl     = _dec(cfg.gsUrl);
+    if (cfg.adminPass) cfg.adminPass = _dec(cfg.adminPass);
+    // Si DEPLOY_CONFIG tiene URL, sobreescribe y fuerza modo googlesheets
+    if (DEPLOY_CONFIG.gsUrl) {
+      cfg.gsUrl = DEPLOY_CONFIG.gsUrl;
+      cfg.mode  = 'googlesheets';
+    }
+    // El token siempre viene de DEPLOY_CONFIG, nunca de localStorage
+    cfg.gsToken = DEPLOY_CONFIG.gsToken || '';
+    return cfg;
+  } catch(e) {
+    return {
+      ...SP_DEFAULTS,
+      gsUrl:   DEPLOY_CONFIG.gsUrl   || '',
+      mode:    DEPLOY_CONFIG.gsUrl   ? 'googlesheets' : 'local',
+      gsToken: DEPLOY_CONFIG.gsToken || '',
+    };
+  }
+};
+
+const saveSPConfig = cfg => {
+  const toSave = { ...cfg };
+  if (toSave.gsUrl)    toSave.gsUrl    = _enc(toSave.gsUrl);
+  if (toSave.adminPass) toSave.adminPass = _enc(toSave.adminPass);
+  // No guardar gsToken en localStorage
+  delete toSave.gsToken;
+  localStorage.setItem(SP_KEY, JSON.stringify(toSave));
+};
+
+/* applyDeployConfig: sincroniza localStorage con DEPLOY_CONFIG al cargar.
+   Solo actúa si DEPLOY_CONFIG.gsUrl está rellenado Y la URL guardada
+   localmente es diferente (instalación nueva o URL actualizada). */
+(function applyDeployConfig() {
+  if (!DEPLOY_CONFIG.gsUrl) return;
+  try {
+    const raw = JSON.parse(localStorage.getItem(SP_KEY) || '{}');
+    const storedUrl = raw.gsUrl ? _dec(raw.gsUrl) : '';
+    if (storedUrl === DEPLOY_CONFIG.gsUrl && raw.mode === 'googlesheets') return;
+    localStorage.setItem(SP_KEY, JSON.stringify({
+      ...raw,
+      mode:  'googlesheets',            // siempre GS cuando hay URL
+      gsUrl: _enc(DEPLOY_CONFIG.gsUrl),
+    }));
+  } catch(e) {}
+})();
+
+/* ════════════════════════════════════════════════════════════════
+   PIN HASHING  — Web Crypto API (SHA-256, sin dependencias externas)
+   Los PINs nunca se almacenan en texto plano.
+   Prefijo "sha256:" distingue hashes de PINs legacy en texto plano.
+   ════════════════════════════════════════════════════════════════ */
+const PIN_PREFIX = 'sha256:';
+async function hashPin(pin) {
+  if (!pin) return '';
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(String(pin))
+  );
+  const hex = Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  return PIN_PREFIX + hex;
+}
+async function verifyPin(entered, stored) {
+  if (!entered || !stored) return false;
+  // Compatibilidad: si el hash guardado es legacy (texto plano), comparar directo
+  if (!stored.startsWith(PIN_PREFIX)) return String(entered) === String(stored);
+  const enteredHash = await hashPin(entered);
+  return enteredHash === stored;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   API LOG (bus de eventos global)
+   ════════════════════════════════════════════════════════════════ */
+const APIBus = {
+  entries: [],
+  subs: new Set(),
+  push(entry) {
+    this.entries.unshift({ ...entry, id: Date.now(), ts: new Date().toLocaleTimeString('es-CL') });
+    if (this.entries.length > 30) this.entries.length = 30;
+    this.subs.forEach(fn => fn([...this.entries]));
+  },
+  log(method, endpoint, status, payload) {
+    this.push({ method, endpoint, status, payload });
+  },
+};
+function useAPILog() {
+  const [entries, set] = useState([...APIBus.entries]);
+  useEffect(() => { const fn = e => set(e); APIBus.subs.add(fn); return () => APIBus.subs.delete(fn); }, []);
+  return entries;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SANITIZACIÓN  — previene inyección de fórmulas en Google Sheets
+   Cualquier celda que empiece con = + - @ \t \r recibe un apóstrofe
+   que fuerza a Sheets a tratarla como texto plano.
+   ════════════════════════════════════════════════════════════════ */
+const sanitizeCell = v => {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+};
+const sanitizeRow = arr => arr.map(sanitizeCell);
+
+/* ════════════════════════════════════════════════════════════════
+   GOOGLE SHEETS API  — lectura, escritura y actualización
+   Comunicación via Apps Script Web App desplegado como "Cualquier usuario".
+   GET  → doGet(e)  con parámetro "accion" y otros parámetros
+   POST → doPost(e) con body JSON
+   IMPORTANTE: Google redirige los POST a una URL diferente.
+   Para evitar el error CORS usamos mode:'no-cors' en escrituras
+   (fire-and-forget). Para lecturas usamos GET normal que sí devuelve JSON.
+   ════════════════════════════════════════════════════════════════ */
+const GS = {
+  url()   { return getSPConfig().gsUrl   || ''; },
+  token() { return getSPConfig().gsToken || ''; },
+
+  /* ── LECTURA ─────────────────────────────────────────────────
+     GET ?accion=leer&hoja=Docentes&token=…
+     Responde: { ok:true, datos:[[...],[...]] }               */
+  async read(hoja) {
+    const url = GS.url();
+    if (!url) return [];
+    const endpoint = url
+      + '?accion=leer&hoja=' + encodeURIComponent(hoja)
+      + '&token=' + encodeURIComponent(GS.token());
+    APIBus.log('GET', endpoint.slice(0,80)+'…', '⟳', null);
+    try {
+      const res  = await fetch(endpoint, { redirect: 'follow' });
+      const json = await res.json();
+      if (!json.ok) { APIBus.log('GET', hoja, 'ERR', json); return []; }
+      APIBus.log('GET', hoja, 200, { filas: (json.datos||[]).length });
+      return json.datos || [];
+    } catch(e) {
+      APIBus.log('GET', hoja, 500, { error: e.message });
+      return [];
+    }
+  },
+
+  /* ── ESCRITURA (nueva fila) ─────────────────────────────────
+     POST { accion:'agregar', hoja, fila:[...], token }       */
+  async append(hoja, fila) {
+    const url = GS.url();
+    if (!url) { APIBus.log('SKIP', hoja+' append', '-', fila); return false; }
+    APIBus.log('POST', hoja+' → append', '⟳', fila);
+    try {
+      await fetch(url, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ accion: 'agregar', hoja, fila, token: GS.token() }),
+      });
+      APIBus.log('POST', hoja+' → append', 200, { nota: 'fila agregada' });
+      return true;
+    } catch(e) {
+      APIBus.log('POST', hoja+' → append', 500, { error: e.message });
+      return false;
+    }
+  },
+
+  /* ── ACTUALIZACIÓN (editar fila existente por clave) ────────
+     POST { accion:'actualizar', hoja, clave, fila:[...], token } */
+  async update(hoja, clave, fila) {
+    const url = GS.url();
+    if (!url) { APIBus.log('SKIP', hoja+' update', '-', fila); return false; }
+    APIBus.log('POST', hoja+' → update '+clave, '⟳', fila);
+    try {
+      await fetch(url, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ accion: 'actualizar', hoja, clave, fila, token: GS.token() }),
+      });
+      APIBus.log('POST', hoja+' → update', 200, { nota: 'fila actualizada' });
+      return true;
+    } catch(e) {
+      APIBus.log('POST', hoja+' → update', 500, { error: e.message });
+      return false;
+    }
+  },
+
+  /* ── MARCAR ELIMINADO (no borra la fila, la marca) ──────────
+     POST { accion:'eliminar', hoja, clave, token }           */
+  async markDeleted(hoja, clave) {
+    const url = GS.url();
+    if (!url) return false;
+    APIBus.log('POST', hoja+' → eliminar '+clave, '⟳', null);
+    try {
+      await fetch(url, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ accion: 'eliminar', hoja, clave, token: GS.token() }),
+      });
+      APIBus.log('POST', hoja+' → eliminar', 200, null);
+      return true;
+    } catch(e) { return false; }
+  },
+
+  /* ── BOOTSTRAP: carga todas las hojas al inicio ─────────────
+     Lee las 4 hojas, fusiona datos locales pendientes y vuelca
+     en localStorage como caché. Registra hora de última sync.  */
+  async bootstrap() {
+    APIBus.log('GET', '━━ Bootstrap Google Sheets ━━', '⟳', null);
+    try {
+      // Guardar estado local ANTES de sobreescribir
+      const localTeachers = (() => {
+        try { return JSON.parse(localStorage.getItem('cap_teachers')||'[]'); } catch{ return []; }
+      })();
+
+      const [docentes, eventos, regs, atts, configRows] = await Promise.all([
+        GS.read('Docentes'),
+        GS.read('Eventos'),
+        GS.read('Inscripciones'),
+        GS.read('Asistencias'),
+        GS.read('Configuracion'),
+      ]);
+
+      // Columnas: RUT | Nombre | Email | Especialidad | PIN | Fecha | Estado
+      const gsTeachers = docentes
+        .filter(f => f[0] && f[0] !== 'RUT')
+        .map(f => ({ rut:f[0]||'', nombre:f[1]||'', email:f[2]||'', especialidad:f[3]||'', pin:f[4]||'', estado:f[6]||'activo' }));
+
+      // Preservar docentes locales con PIN que aún no llegaron a GS (pending-sync)
+      // y también actualizar PINs configurados localmente que GS aún no tiene
+      const teachers = [...gsTeachers];
+      localTeachers.forEach(lt => {
+        const gsIdx = teachers.findIndex(gt => {
+          try { return DB.sameRut(gt.rut, lt.rut); } catch{ return false; }
+        });
+        if(gsIdx === -1) {
+          // Docente existe solo local — preservar y re-intentar sync a GS
+          if(lt.nombre) {
+            teachers.push(lt);
+            GS.addDocente(lt).catch(()=>{});
+            APIBus.log('POST','pending-sync '+lt.rut,'⟳',{nombre:lt.nombre});
+          }
+        } else if(lt.pin && !teachers[gsIdx].pin) {
+          // PIN configurado localmente pero no en GS — preservar localmente y sincronizar
+          teachers[gsIdx] = {...teachers[gsIdx], pin: lt.pin};
+          GS.updateDocente({...teachers[gsIdx], pin: lt.pin}).catch(()=>{});
+        }
+      });
+
+      // Columnas: ID | Nombre | Tipo | Fecha | Hora | Lugar | Cupos | Relator | Descripción | Creado | Estado
+      const normFecha = v => { if(!v) return ''; const s=String(v); return s.length>=10?s.slice(0,10):s; };
+      const normHora  = v => {
+        if(!v) return '09:00';
+        const s=String(v);
+        if(s.includes('T')) {
+          try {
+            const d=new Date(s);
+            return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+          } catch(e) {}
+        }
+        if(/^\d{1,2}:\d{2}/.test(s)) return s.slice(0,5);
+        return '09:00';
+      };
+      // Columnas: ID | Nombre | Tipo | Fecha | Hora | Lugar | Cupos | Relator | Descripción | Creado | Estado | Duración | EstadoPublicacion | FechaApertura
+      const eventsArr = eventos
+        .filter(f => f[0] && f[0] !== 'ID' && f[10] !== 'ELIMINADO')
+        .map(f => ({ id:f[0]||'', nombre:f[1]||'', tipo:f[2]||'Taller',
+          fecha:normFecha(f[3]), hora:normHora(f[4]),
+          lugar:f[5]||'', cupos:+f[6]||0, relator:f[7]||'', descripcion:f[8]||'',
+          duracion:f[11]?+f[11]:60,
+          estadoPublicacion:f[12]||'Abierto',
+          fechaApertura:normFecha(f[13])||'' }));
+
+      // Columnas: ID | EventoID | RUT | Fecha | Estado
+      const regsRaw = regs
+        .filter(f => f[0] && f[0] !== 'ID' && f[4] !== 'Cancelada' && String(f[0]).startsWith('r'))
+        .map(f => ({ id:f[0]||'', eid:f[1]||'', rut:f[2]||'', fecha:f[3]||'' }));
+      // Deduplicar por (eid, rut) — mantiene la primera ocurrencia
+      const _regsSeen = new Set();
+      const regsArr = regsRaw.filter(r => {
+        const key = r.eid + '|' + DB.normRut(r.rut);
+        if(_regsSeen.has(key)) return false;
+        _regsSeen.add(key); return true;
+      });
+
+      // Columnas: ID | EventoID | RUT | Fecha | RegistradoPor
+      const attsArr = atts
+        .filter(f => f[0] && f[0] !== 'ID')
+        .map(f => ({ id:f[0]||'', eid:f[1]||'', rut:f[2]||'', fecha:f[3]||'' }));
+
+      localStorage.setItem('cap_teachers', JSON.stringify(teachers));
+      localStorage.setItem('cap_events',   JSON.stringify(eventsArr));
+      localStorage.setItem('cap_regs',     JSON.stringify(regsArr));
+      localStorage.setItem('cap_att',      JSON.stringify(attsArr));
+      localStorage.setItem('cap_v2', '1');
+      localStorage.setItem('cap_last_sync', new Date().toISOString());
+
+      // Guardar parámetros de configuración
+      const sysConfig = {};
+      (configRows||[]).filter(f=>f[0]&&f[0]!=='Clave').forEach(f=>{ sysConfig[f[0]]=f[1]||''; });
+      setSysConfig(sysConfig);
+
+      APIBus.log('GET', '━━ Bootstrap OK ━━', 200,
+        { docentes:teachers.length, eventos:eventsArr.length,
+          inscripciones:regsArr.length, asistencias:attsArr.length });
+      return { ok:true, docentes:teachers.length, eventos:eventsArr.length };
+    } catch(e) {
+      APIBus.log('GET', '━━ Bootstrap ERROR ━━', 500, { error: e.message });
+      return { ok:false, error: e.message };
+    }
+  },
+
+  /* ── Busca docente por RUT o correo ─────────────────────────
+     Lee la hoja y busca match. Devuelve objeto o null.        */
+  async findDocente(rutOCorreo) {
+    const filas = await GS.read('Docentes');
+    const q = rutOCorreo.trim().toLowerCase();
+    const normQ = q.replace(/[.\s-]/g,'');
+    const fila = filas.find(f => {
+      if(!f[0] || f[0]==='RUT') return false;
+      const rutN  = (f[0]||'').replace(/[.\s-]/g,'').toLowerCase();
+      const email = (f[2]||'').toLowerCase();
+      return rutN === normQ || email === q;
+    });
+    if (!fila) return null;
+    return { rut:fila[0], nombre:fila[1]||'', email:fila[2]||'',
+             especialidad:fila[3]||'', pin:fila[4]||'' };
+  },
+
+  /* ── Helpers por entidad ─────────────────────────────────── */
+  addDocente:    (t)       => GS.append('Docentes', sanitizeRow([t.rut, t.nombre, t.email, t.especialidad, t.pin||'', new Date().toISOString().slice(0,10), t.estado||'pendiente'])),
+  updateDocente: (t)       => GS.update('Docentes', t.rut, sanitizeRow([t.rut, t.nombre, t.email, t.especialidad, t.pin||'', new Date().toISOString().slice(0,10), t.estado||'activo'])),
+  addEvento:     (e)       => { const hoy=new Date().toISOString().slice(0,10); const est=e.fecha>hoy?'Próximo':e.fecha===hoy?'Hoy':'Realizado'; return GS.append('Eventos', sanitizeRow([e.id,e.nombre,e.tipo,e.fecha,e.hora,e.lugar,e.cupos,e.relator,e.descripcion||'',hoy,est,e.duracion||60,e.estadoPublicacion||'Abierto',e.fechaApertura||''])); },
+  deleteEvento:  (id)      => GS.markDeleted('Eventos', id),
+  updateEvento:  (e)       => { const hoy=new Date().toISOString().slice(0,10); const est=e.fecha>hoy?'Próximo':e.fecha===hoy?'Hoy':'Realizado'; return GS.update('Eventos',e.id, sanitizeRow([e.id,e.nombre,e.tipo,e.fecha,e.hora,e.lugar,e.cupos,e.relator,e.descripcion||'',hoy,est,e.duracion||60,e.estadoPublicacion||'Abierto',e.fechaApertura||''])); },
+  addInscripcion:(d)       => GS.append('Inscripciones', sanitizeRow([d.id, d.eid, d.rut, new Date().toISOString().slice(0,10), 'Activa'])),
+
+  /* ── INSCRIPCIÓN ATÓMICA (v3.0) ──────────────────────────────
+     Usa mode:'cors' para leer la respuesta del servidor.
+     El Apps Script ejecuta LockService para garantizar que
+     dos peticiones simultáneas no superen el cupo.
+     Si el servidor responde ok:false/error:'sin_cupos'
+     el frontend NO registra localmente (prevención real).
+     Si hay error de red/CORS, devuelve {ok:null} y el
+     frontend cae en comportamiento optimista (igual que antes). */
+  async inscribir(eid, rut, regId) {
+    const url = GS.url();
+    if (!url) return { ok: null, error: 'no_url' };
+    APIBus.log('POST', 'Inscripciones → inscribir (lock)', '⟳', { eid, rut });
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        mode: 'cors',              // queremos leer la respuesta
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain' }, // sin preflight
+        body: JSON.stringify({ accion: 'inscribir', eid, rut, id: regId, token: GS.token() }),
+      });
+      const json = await res.json();
+      APIBus.log('POST', 'Inscripciones → inscribir', json.ok ? 200 : 'ERR', json);
+      return json;
+    } catch(e) {
+      // CORS bloqueado o red caída → fallback fire-and-forget (comportamiento v2)
+      APIBus.log('POST', 'Inscripciones → inscribir (fallback no-cors)', 'CORS', { error: e.message });
+      try {
+        await fetch(url, {
+          method: 'POST', mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ accion: 'inscribir', eid, rut, id: regId, token: GS.token() }),
+        });
+      } catch(_) {}
+      return { ok: null, error: 'cors_fallback' }; // null = estado desconocido
+    }
+  },
+  /* regId = ID real de la fila en GS (col[0]); regFecha = fecha original de inscripción */
+  cancelInscripcion:(eid,rut,regId,regFecha) => {
+    const hoy=new Date().toISOString().slice(0,10);
+    const id=regId||eid;
+    const fila=sanitizeRow([id,eid,rut,regFecha||hoy,'Cancelada']);
+    return GS.update('Inscripciones',id,fila);
+  },
+  addAsistencia: (d)       => GS.append('Asistencias', sanitizeRow([d.id, d.eid, d.rut, new Date().toISOString().slice(0,10), d.tipo||'asistio'])),
+
+  /* ── Log de actividad ────────────────────────────────────────
+     Columnas: ID | Fecha | Hora | Tipo | Usuario | EventoID | Detalle */
+  addLog: (tipo, usuario, eid, detalle) => {
+    const ahora = new Date();
+    const fecha = ahora.toISOString().slice(0,10);
+    const hora  = ahora.toTimeString().slice(0,5);
+    const id    = 'l-' + Date.now();
+    return GS.append('Log', sanitizeRow([id, fecha, hora, tipo, usuario||'', eid||'', detalle||'']));
+  },
+
+  /* ── Configuración del sistema ───────────────────────────────
+     Lee todos los pares Clave | Valor y devuelve un objeto     */
+  async getConfig() {
+    const filas = await GS.read('Configuracion');
+    const cfg = {};
+    filas.filter(f => f[0] && f[0] !== 'Clave').forEach(f => { cfg[f[0]] = f[1] || ''; });
+    return cfg;
+  },
+  setConfig: (clave, valor) => GS.update('Configuracion', clave, [clave, valor]),
+};
+
+
+// Alias legacy
+const GoogleSheetsAPI = GS;
+
+/* ── Valida dígito verificador del RUT chileno ── */
+const validarRut = r => {
+  if(!r || typeof r !== 'string') return false;
+  const clean = r.replace(/[^0-9kK]/g,'').toUpperCase();
+  if(clean.length < 2) return false;
+  const dv   = clean.slice(-1);
+  const body = clean.slice(0,-1);
+  if(!/^\d+$/.test(body)) return false;
+  let sum=0, mul=2;
+  for(let i=body.length-1;i>=0;i--){sum+=parseInt(body[i])*mul;mul=mul===7?2:mul+1;}
+  const expected = 11-(sum%11);
+  const dvCalc = expected===11?'0':expected===10?'K':String(expected);
+  return dv === dvCalc;
+};
+
+/* ── Leer parámetros del sistema desde localStorage (seteados por bootstrap) ── */
+const getSysConfig = () => {
+  try { return JSON.parse(localStorage.getItem('cap_sys_config') || '{}'); } catch { return {}; }
+};
+const setSysConfig = obj => localStorage.setItem('cap_sys_config', JSON.stringify(obj));
+
+/* ── formatRut: convierte cualquier entrada al formato 12.345.678-9 ── */
+const formatRut = r => {
+  if(!r || typeof r !== 'string') return r;
+  const clean = r.replace(/[^0-9kK]/g,'').toUpperCase();
+  if(clean.length < 2) return r;
+  const dv   = clean.slice(-1);
+  const body = clean.slice(0,-1);
+  const fmt  = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return fmt + '-' + dv;
+};
+
+
+/* ── Facultades / Escuelas disponibles ── */
+const FACULTADES = [
+  'Facultad de Artes Liberales',
+  'Facultad de Ingeniería y Ciencias',
+  'Facultad de Derecho',
+  'Design Lab',
+  'Escuela de Psicología',
+  'Escuela de Comunicaciones y Periodismo',
+  'Escuela de Gobierno',
+  'Escuela de Negocios',
+  'Otras áreas',
+];
+/* ════════════════════════════════════════════════════════════════
+   DATE HELPERS
+   ════════════════════════════════════════════════════════════════ */
+const MESES   = ['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const MESES_L = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const _cleanDate = d => { if(!d) return ''; const s=String(d); return s.length>=10?s.slice(0,10):s; };
+const fmtDate  = d => { if(!d) return '—'; const [y,m,day]=_cleanDate(d).split('-'); const dd=+day; return isNaN(dd)?'—':`${dd} ${MESES[+m]||'?'} ${y}`; };
+const fmtDateL = d => { if(!d) return '—'; const [y,m,day]=_cleanDate(d).split('-'); const dd=+day; return isNaN(dd)?'—':`${dd} de ${MESES_L[+m]||'?'} de ${y}`; };
+const fmtHora  = h => {
+  if(!h) return '';
+  const s=String(h);
+  if(s.includes('T')) {
+    try {
+      const d=new Date(s);
+      return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    } catch(e) {}
+  }
+  return /^\d{1,2}:\d{2}/.test(s)?s.slice(0,5):s;
+};
+const isUpcoming = f => f > TODAY;
+const isToday    = f => f === TODAY;
+const isPast     = f => f < TODAY;
+
+/* ── Abre automáticamente eventos cuya fechaApertura ya llegó ── */
+function autoOpenEvents() {
+  const cfg = getSPConfig();
+  DB.events().forEach(ev => {
+    if (ev.estadoPublicacion === 'Publicado' && ev.fechaApertura && ev.fechaApertura <= TODAY) {
+      DB.setEstadoPublicacion(ev.id, 'Abierto');
+      if (cfg.mode === 'googlesheets' && cfg.gsUrl)
+        GS.updateEvento({ ...ev, estadoPublicacion: 'Abierto' }).catch(() => {});
+    }
+  });
+}
+/* ── 24h time selectors ── */
+function HoraInput({value, onChange}) {
+  const parts=(value||'09:00').split(':');
+  const hh=parts[0]||'09', mm=parts[1]||'00';
+  const hrs=Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
+  const mins=['00','05','10','15','20','25','30','35','40','45','50','55'];
+  return <div style={{display:'flex',gap:6,alignItems:'center'}}>
+    <select value={hh}
+      onChange={e=>onChange(e.target.value+':'+mm)}
+      style={{...inpSt(false),width:68,textAlign:'center'}}>
+      {hrs.map(h=><option key={h} value={h}>{h}</option>)}
+    </select>
+    <span style={{fontWeight:700,color:'#64748B',fontSize:16}}>:</span>
+    <select value={mm}
+      onChange={e=>onChange(hh+':'+e.target.value)}
+      style={{...inpSt(false),width:68,textAlign:'center'}}>
+      {mins.map(m=><option key={m} value={m}>{m}</option>)}
+    </select>
+  </div>;
+}
+
+/* ── useNow: returns current Date, refreshes every 30 s ── */
+function useNow() {
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),30000); return ()=>clearInterval(id); },[]);
+  return now;
+}
+
+/* ── isCheckInOpen: ventana 10 min antes del inicio
+       hasta 10 min después del fin (inicio + duración) ── */
+function isCheckInOpen(ev, now) {
+  if(!isToday(ev.fecha)) return false;
+  const t=now||new Date();
+  const nowMin=t.getHours()*60+t.getMinutes();
+  const [hh,mm]=(ev.hora||'09:00').split(':').map(Number);
+  const startMin=hh*60+mm;
+  const durMin=ev.duracion?+ev.duracion:60;
+  return nowMin>=(startMin-10) && nowMin<=(startMin+durMin+10);
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   ICONS
+   ════════════════════════════════════════════════════════════════ */
+const IC = {
+  home:    'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z M9 22V12h6v10',
+  calendar:'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+  users:   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75',
+  check:   'M20 6L9 17l-5-5',
+  checkc:  'M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01l-3-3',
+  plus:    'M12 5v14M5 12h14',
+  search:  'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+  back:    'M19 12H5M12 19l-7-7 7-7',
+  dl:      'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M7 10l5 5 5-5 M12 15V3',
+  logout:  'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4 M16 17l5-5-5-5 M21 12H9',
+  pin:     'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z M12 10a2 2 0 100-4 2 2 0 000 4',
+  person:  'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8',
+  clip:    'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+  x:       'M18 6L6 18M6 6l12 12',
+  eye:     'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6',
+  star:    'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+  brief:   'M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2',
+  trash:   'M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6',
+  edit:    'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7 M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+  warn:    'M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z M12 9v4 M12 17h.01',
+  gear:    'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+  cloud:   'M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z',
+  wifi:    'M5 12.55a11 11 0 0114.08 0 M1.42 9a16 16 0 0121.16 0 M8.53 16.11a6 6 0 016.95 0 M12 20h.01',
+  db:      'M12 2C6.48 2 2 4.24 2 7s4.48 5 10 5 10-2.24 10-5-4.48-5-10-5z M2 7v5c0 2.76 4.48 5 10 5s10-2.24 10-5V7 M2 12v5c0 2.76 4.48 5 10 5s10-2.24 10-5v-5',
+};
+function Icon({ name, size=18, style:s, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color||'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      {(IC[name]||'').split(' M').map((seg,i) => <path key={i} d={i===0?seg:'M'+seg}/>)}
+    </svg>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SHARED UI COMPONENTS
+   ════════════════════════════════════════════════════════════════ */
+const TIPO_C = {
+  Acompañamiento: {bg:'#FCE7F3',tx:'#9D174D'},
+  Charla:    {bg:'#DCFCE7',tx:'#15803D'},
+  Congreso:  {bg:'#FEF3C7',tx:'#B45309'},
+  Curso:     {bg:'#FEF9C3',tx:'#A16207'},
+  Otro:      {bg:'#F1F5F9',tx:'#475569'},
+  Seminario: {bg:'#F3E8FF',tx:'#7C3AED'},
+  Taller:    {bg:'#DBEAFE',tx:'#1D4ED8'},
+};
+
+function Badge({text,variant}) {
+  const c = variant==='success'?{bg:'#DCFCE7',tx:'#15803D'}
+    :variant==='warning'?{bg:'#FEF3C7',tx:'#B45309'}
+    :variant==='danger'?{bg:'#FEE2E2',tx:'#B91C1C'}
+    :variant==='info'?{bg:'#DBEAFE',tx:'#1D4ED8'}
+    :variant==='ms'?{bg:'#EFF6FF',tx:'#0067b8'}
+    :(TIPO_C[text]||{bg:'#F1F5F9',tx:'#475569'});
+  return <span style={{display:'inline-flex',alignItems:'center',padding:'2px 10px',borderRadius:999,
+    fontSize:12,fontWeight:600,background:c.bg,color:c.tx,whiteSpace:'nowrap'}}>{text}</span>;
+}
+
+function Btn({children,onClick,variant='primary',size='md',disabled,style:s,type='button',full}) {
+  const base={display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,
+    fontFamily:'inherit',fontWeight:600,cursor:disabled?'not-allowed':'pointer',
+    border:'none',outline:'none',transition:'opacity 0.12s',opacity:disabled?.5:1,
+    borderRadius:8,width:full?'100%':undefined};
+  const sz={sm:{padding:'5px 12px',fontSize:13},md:{padding:'8px 16px',fontSize:14},
+    lg:{padding:'11px 22px',fontSize:15},xl:{padding:'14px 28px',fontSize:16}}[size];
+  const vr={primary:{background:'#1E3A8A',color:'#fff'},secondary:{background:'#EFF6FF',color:'#1D4ED8'},
+    ghost:{background:'transparent',color:'#64748B'},danger:{background:'#FEE2E2',color:'#B91C1C'},
+    accent:{background:'#0D9488',color:'#fff'},outline:{background:'transparent',color:'#1E3A8A',border:'1px solid #1E3A8A'},
+    ms:{background:'#0067b8',color:'#fff',borderRadius:0},
+  }[variant]||{};
+  return <button type={type} onClick={onClick} disabled={disabled} style={{...base,...sz,...vr,...s}}
+    onMouseEnter={e=>{if(!disabled)e.currentTarget.style.opacity='0.85';}}
+    onMouseLeave={e=>{e.currentTarget.style.opacity=disabled?'0.5':'1';}}>{children}</button>;
+}
+
+function Card({children,style:s,onClick,p=24}) {
+  return <div onClick={onClick} style={{background:'#fff',borderRadius:12,
+    boxShadow:'0 1px 4px rgba(15,23,42,0.07)',border:'1px solid #F1F5F9',padding:p,
+    ...(onClick?{cursor:'pointer'}:{}), ...s}}>{children}</div>;
+}
+
+function Modal({open,onClose,title,children,width=520}) {
+  if(!open) return null;
+  return <div style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(15,23,42,0.45)',
+    backdropFilter:'blur(4px)',display:'flex',alignItems:'flex-start',justifyContent:'center',
+    padding:'20px 16px',overflowY:'auto'}}
+    onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="fade-in" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:width,
+      boxShadow:'0 24px 64px rgba(15,23,42,0.15)',marginTop:0,marginBottom:'auto',
+      display:'flex',flexDirection:'column',maxHeight:'calc(100dvh - 40px)'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+        padding:'18px 24px 14px',borderBottom:'1px solid #F1F5F9',flexShrink:0}}>
+        <h2 style={{fontSize:16,fontWeight:700}}>{title}</h2>
+        <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',
+          color:'#94A3B8',padding:4,borderRadius:6,display:'flex'}}><Icon name="x" size={18}/></button>
+      </div>
+      <div style={{padding:'20px 24px 24px',overflowY:'auto'}}>{children}</div>
+    </div>
+  </div>;
+}
+
+function Field({label,required,children,error,hint,style:s}) {
+  return <div style={{display:'flex',flexDirection:'column',gap:5,...s}}>
+    {label&&<label style={{fontSize:13,fontWeight:600,color:'#374151'}}>
+      {label}{required&&<span style={{color:'#EF4444'}}> *</span>}
+    </label>}
+    {children}
+    {hint&&<span style={{fontSize:12,color:'#94A3B8'}}>{hint}</span>}
+    {error&&<span style={{fontSize:12,color:'#EF4444'}}>{error}</span>}
+  </div>;
+}
+
+const inpSt = d=>({padding:'9px 12px',borderRadius:8,border:'1px solid #E2E8F0',
+  fontSize:14,fontFamily:'inherit',background:d?'#F8FAFC':'#fff',outline:'none',width:'100%',color:'#0F172A'});
+
+function TInput({value,onChange,placeholder,type='text',style:s,disabled,autoFocus,onKeyDown,maxLength}) {
+  return <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+    disabled={disabled} autoFocus={autoFocus} onKeyDown={onKeyDown}
+    maxLength={maxLength||500}
+    style={{...inpSt(disabled),...s}}/>;
+}
+function SInput({value,onChange,options,placeholder,children}) {
+  return <select value={value} onChange={onChange} style={inpSt(false)}>
+    {placeholder&&<option value="">{placeholder}</option>}
+    {options&&options.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}
+    {children}
+  </select>;
+}
+function TArea({value,onChange,placeholder,rows=3}) {
+  return <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows}
+    maxLength={2000}
+    style={{...inpSt(false),resize:'vertical'}}/>;
+}
+
+function StatCard({label,value,icon,color}) {
+  return <Card p={20} style={{display:'flex',alignItems:'center',gap:16}}>
+    <div style={{width:48,height:48,borderRadius:12,background:color+'18',color,
+      display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+      <Icon name={icon} size={22}/>
+    </div>
+    <div>
+      <div style={{fontSize:26,fontWeight:800,color:'#0F172A',lineHeight:1.1}}>{value}</div>
+      <div style={{fontSize:13,color:'#64748B',marginTop:2}}>{label}</div>
+    </div>
+  </Card>;
+}
+
+function PageHeader({title,subtitle,action,back,onBack}) {
+  return <div style={{marginBottom:24}}>
+    {back&&<button onClick={onBack} style={{background:'none',border:'none',cursor:'pointer',
+      display:'flex',alignItems:'center',gap:6,color:'#64748B',fontSize:13,
+      fontFamily:'inherit',fontWeight:500,marginBottom:14,padding:0}}>
+      <Icon name="back" size={15}/>{back}
+    </button>}
+    <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+      <div>
+        <h1 style={{fontSize:22,fontWeight:800,color:'#0F172A'}}>{title}</h1>
+        {subtitle&&<p style={{fontSize:14,color:'#64748B',marginTop:4}}>{subtitle}</p>}
+      </div>
+      {action&&<div style={{flexShrink:0}}>{action}</div>}
+    </div>
+  </div>;
+}
+
+function Empty({icon='calendar',title,subtitle,action}) {
+  return <div style={{textAlign:'center',padding:'56px 24px'}}>
+    <div style={{opacity:.3,marginBottom:16}}><Icon name={icon} size={44}/></div>
+    <div style={{fontSize:15,fontWeight:600,color:'#64748B',marginBottom:6}}>{title}</div>
+    {subtitle&&<div style={{fontSize:13,color:'#94A3B8',marginBottom:20}}>{subtitle}</div>}
+    {action}
+  </div>;
+}
+
+function Tabs({tabs,active,onChange}) {
+  return <div style={{display:'flex',borderBottom:'2px solid #F1F5F9',marginBottom:20,overflowX:'auto'}}>
+    {tabs.map(t=><button key={t.id} onClick={()=>onChange(t.id)} style={{
+      padding:'10px 20px',border:'none',background:'none',cursor:'pointer',
+      fontFamily:'inherit',fontSize:14,fontWeight:600,whiteSpace:'nowrap',
+      color:active===t.id?'#1E3A8A':'#94A3B8',
+      borderBottom:active===t.id?'2px solid #1E3A8A':'2px solid transparent',
+      marginBottom:-2,transition:'all 0.12s'}}>{t.label}</button>)}
+  </div>;
+}
+
+function FilterPills({options,value,onChange}) {
+  return <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+    {options.map(([v,l])=><button key={v} onClick={()=>onChange(v)} style={{
+      padding:'6px 14px',borderRadius:20,fontSize:13,fontWeight:500,cursor:'pointer',
+      fontFamily:'inherit',transition:'all 0.12s',
+      border:`1px solid ${value===v?'#1E3A8A':'#E2E8F0'}`,
+      background:value===v?'#1E3A8A':'#fff',color:value===v?'#fff':'#64748B'}}>{l}</button>)}
+  </div>;
+}
+
+function Table({cols,rows,empty}) {
+  if(rows.length===0) return empty||<Empty icon="users" title="Sin resultados"/>;
+  return <div style={{overflowX:'auto'}}>
+    <table style={{width:'100%',borderCollapse:'collapse'}}>
+      <thead><tr style={{borderBottom:'1px solid #F1F5F9'}}>
+        {cols.map(c=><th key={c} style={{padding:'10px 16px',textAlign:'left',fontSize:12,
+          fontWeight:600,color:'#94A3B8',whiteSpace:'nowrap'}}>{c}</th>)}
+      </tr></thead>
+      <tbody>{rows}</tbody>
+    </table>
+  </div>;
+}
+const Td = ({children,mono})=><td style={{padding:'12px 16px',fontSize:13,color:'#475569',
+  fontFamily:mono?'monospace':'inherit',borderBottom:'1px solid #F8FAFC'}}>{children}</td>;
+
+function EventCard({event,onAction,actionLabel,actionVariant,actionDisabled,extra,onClick,showPubState}) {
+  const past=isPast(event.fecha),today=isToday(event.fecha);
+  const regs=DB.eventRegs(event.id).length,atts=DB.eventAtts(event.id).length;
+  const closed=DB.isClosed(event.id);
+  const ep=event.estadoPublicacion||'Abierto';
+  const pubBadge = showPubState && ep !== 'Abierto' ? (
+    ep==='Borrador'
+      ? <Badge text="Borrador" variant="neutral"/>
+      : <Badge text="Publicado" variant="info"/>
+  ) : null;
+  const colors=TIPO_C[event.tipo]||TIPO_C.Otro;
+  return <Card p={0} onClick={onClick} style={{overflow:'hidden',...(onClick?{cursor:'pointer'}:{})}}>
+    <div style={{height:4,background:colors.tx,opacity:.5}}/>
+    <div style={{padding:'16px 20px'}}>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:10}}>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          <Badge text={event.tipo}/>
+          {today&&<Badge text="Hoy" variant="warning"/>}
+          {closed&&<Badge text="Finalizado" variant="success"/>}
+          {!closed&&past&&<Badge text={atts>0?'Realizado':'Sin asistencia'} variant={atts>0?'success':'neutral'}/>}
+          {pubBadge}
+        </div>
+        <span style={{fontSize:12,color:'#94A3B8',whiteSpace:'nowrap',flexShrink:0}}>{regs} inscritos</span>
+      </div>
+      <h3 style={{fontSize:15,fontWeight:700,color:'#0F172A',marginBottom:10,lineHeight:1.35}}>{event.nombre}</h3>
+      <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:extra||onAction?14:0}}>
+        {[{icon:'calendar',text:`${fmtDateL(event.fecha)} · ${fmtHora(event.hora)}h${event.duracion?' ('+( +event.duracion>=60?Math.floor(+event.duracion/60)+'h'+(+event.duracion%60?+event.duracion%60+'min':''):+event.duracion+'min')+')':''}`},{icon:'pin',text:event.lugar},{icon:'person',text:event.relator},].map(({icon,text})=><div key={icon} style={{display:'flex',alignItems:'center',gap:6,fontSize:13,color:'#64748B'}}>
+            <Icon name={icon} size={13}/>{text}</div>)}
+      </div>
+      {extra}
+      {onAction&&actionLabel&&<Btn onClick={e=>{e.stopPropagation();onAction();}} variant={actionVariant||'primary'}
+        size="sm" disabled={actionDisabled}>{actionLabel}</Btn>}
+    </div>
+  </Card>;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   API MONITOR PANEL
+   ════════════════════════════════════════════════════════════════ */
+function APIMonitor({onClose}) {
+  const entries = useAPILog();
+  const mc = {GET:'#4ADE80',POST:'#60A5FA',PATCH:'#FBBF24',DELETE:'#F87171',PUT:'#C084FC'};
+  const sc = {200:'#4ADE80',201:'#4ADE80',204:'#4ADE80',400:'#F87171',401:'#F87171',404:'#F87171'};
+
+  return <div className="slide-in" style={{position:'fixed',bottom:20,right:20,zIndex:1500,width:440,
+    maxHeight:'60vh',background:'#0F172A',borderRadius:12,boxShadow:'0 8px 40px rgba(0,0,0,.4)',
+    display:'flex',flexDirection:'column',overflow:'hidden',border:'1px solid rgba(255,255,255,.06)'}}>
+    <div style={{padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',
+      borderBottom:'1px solid rgba(255,255,255,.07)',background:'#0F172A'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <div style={{width:8,height:8,borderRadius:'50%',background:'#4ADE80',
+          boxShadow:'0 0 8px #4ADE80',animation:'blink 2s ease infinite'}}/>
+        <span style={{fontSize:11,fontWeight:700,color:'#64748B',letterSpacing:1,fontFamily:'monospace'}}>
+          MONITOR DE ACTIVIDAD
+        </span>
+      </div>
+      <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'#475569',fontSize:15,padding:0}}>✕</button>
+    </div>
+    <div style={{flex:1,overflow:'auto',padding:8}}>
+      {entries.length===0
+        ? <div style={{padding:28,textAlign:'center',color:'#334155',fontSize:12,fontFamily:'monospace'}}>
+            Esperando llamadas a la API…<br/><span style={{opacity:.5}}>Realiza una acción en el sistema</span>
+          </div>
+        : entries.map(e=><div key={e.id} className="fade-in" style={{padding:'8px 10px',borderRadius:6,marginBottom:5,
+            background:'rgba(255,255,255,.03)',borderLeft:`3px solid ${mc[e.method]||'#64748B'}`}}>
+            <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:4}}>
+              <span className="api-badge" style={{color:mc[e.method]||'#94A3B8',background:'rgba(255,255,255,.06)'}}>{e.method}</span>
+              <span style={{fontSize:10,fontWeight:700,color:sc[e.status]||'#94A3B8',fontFamily:'monospace'}}>{e.status}</span>
+              <span style={{fontSize:10,color:'#334155',marginLeft:'auto',fontFamily:'monospace'}}>{e.ts}</span>
+            </div>
+            <div style={{fontSize:11,color:'#64748B',fontFamily:'monospace',wordBreak:'break-all',lineHeight:1.5}}>{e.endpoint}</div>
+            {e.payload&&<div style={{fontSize:10,color:'#334155',fontFamily:'monospace',marginTop:4,
+              background:'rgba(0,0,0,.3)',padding:'4px 6px',borderRadius:4,
+              maxHeight:56,overflow:'hidden',whiteSpace:'pre'}}>
+              {JSON.stringify(e.payload).slice(0,140)}{JSON.stringify(e.payload).length>140?'…':''}
+            </div>}
+          </div>)
+      }
+    </div>
+    <div style={{padding:'8px 14px',borderTop:'1px solid rgba(255,255,255,.06)',fontSize:10,
+      color:'#334155',fontFamily:'monospace',display:'flex',justifyContent:'space-between'}}>
+      <span>Modo: {getSPConfig().mode==='googlesheets'?'Google Sheets':'Local'}</span>
+      <span>{entries.length} llamadas registradas</span>
+    </div>
+  </div>;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SETTINGS PANEL (dentro de la app)
+   ════════════════════════════════════════════════════════════════ */
+const APPS_SCRIPT_CODE = [
+  '/**',
+  ' * Sistema de Capacitaciones Docentes — Apps Script v4.0',
+  ' *',
+  ' * CAMBIOS v4.0:',
+  ' *   · Token de seguridad CAP_TOKEN — rechaza peticiones sin token válido.',
+  ' *     Debe coincidir con DEPLOY_CONFIG.gsToken en el HTML.',
+  ' *   · Si CAP_TOKEN queda vacío, el sistema funciona sin protección (v3 compatible).',
+  ' *',
+  ' * ACTUALIZACIÓN DESDE v3.0:',
+  ' * PASO 1: Pegar este código en Apps Script → guardar.',
+  ' * PASO 2: Definir CAP_TOKEN en la línea indicada (mismo valor que en el HTML).',
+  ' * PASO 3: Implementar → Administrar implementaciones → editar → Nueva versión.',
+  ' * PASO 4: La URL no cambia. No ejecutar crearHojas de nuevo.',
+  ' */',
+  '',
+  '// ── TOKEN DE SEGURIDAD ───────────────────────────────────────────────────',
+  '// Debe ser idéntico a DEPLOY_CONFIG.gsToken en el archivo HTML.',
+  '// Dejar vacío ("") para deshabilitar la validación (no recomendado en prod).',
+  'var CAP_TOKEN = \'\'; // ← completar con tu token secreto',
+  '',
+  '// ── ESCRITURA (POST) ─────────────────────────────────────────────────────',
+  'function doPost(e) {',
+  '  try {',
+  '    var d = JSON.parse(e.postData.contents);',
+  '    // Validar token si está configurado',
+  '    if (CAP_TOKEN && (!d.token || d.token !== CAP_TOKEN))',
+  '      return ok({ok:false, error:\'unauthorized\', msg:\'Token inválido o ausente.\'});',
+  '    var ss = SpreadsheetApp.getActiveSpreadsheet();',
+  '',
+  '    // ── INSCRIPCIÓN ATÓMICA ──────────────────────────────────────────────',
+  '    if (d.accion === "inscribir") {',
+  '      var lock = LockService.getScriptLock();',
+  '      var gotLock = lock.tryLock(6000);',
+  '      if (!gotLock) return ok({ok:false, error:"lock_timeout",',
+  '        msg:"El servidor está ocupado. Intenta en unos segundos."});',
+  '      try {',
+  '        var shEv  = ss.getSheetByName("Eventos");',
+  '        var shReg = ss.getSheetByName("Inscripciones");',
+  '        if (!shEv || !shReg) return ok({ok:false, error:"hoja_no_encontrada"});',
+  '        var evData = shEv.getDataRange().getValues();',
+  '        var cupos = -1;',
+  '        for (var i = 1; i < evData.length; i++) {',
+  '          if (String(evData[i][0]) === String(d.eid) &&',
+  '              String(evData[i][10]) !== "ELIMINADO") {',
+  '            cupos = parseInt(evData[i][6]) || 0; break;',
+  '          }',
+  '        }',
+  '        if (cupos < 0) return ok({ok:false, error:"evento_no_encontrado"});',
+  '        var regData  = shReg.getDataRange().getValues();',
+  '        var inscritos = 0;',
+  '        var rutNorm  = String(d.rut).replace(/[.\\s]/g,"").toUpperCase();',
+  '        for (var j = 1; j < regData.length; j++) {',
+  '          var row = regData[j];',
+  '          if (String(row[1]) !== String(d.eid)) continue;',
+  '          if (String(row[4]) === "Cancelada")    continue;',
+  '          inscritos++;',
+  '          if (String(row[2]).replace(/[.\\s]/g,"").toUpperCase() === rutNorm)',
+  '            return ok({ok:false, error:"ya_inscrito"});',
+  '        }',
+  '        if (inscritos >= cupos)',
+  '          return ok({ok:false, error:"sin_cupos",',
+  '            cupos:cupos, inscritos:inscritos});',
+  '        var hoy = new Date().toISOString().slice(0,10);',
+  '        shReg.appendRow([d.id, d.eid, d.rut, hoy, "Activa"]);',
+  '        return ok({ok:true, accion:"inscrito",',
+  '          cuposRestantes: cupos - inscritos - 1});',
+  '      } finally { lock.releaseLock(); }',
+  '    }',
+  '',
+  '    // ── CANCELAR INSCRIPCIÓN ─────────────────────────────────────────────',
+  '    if (d.accion === "cancelar_inscripcion") {',
+  '      var sh = ss.getSheetByName("Inscripciones");',
+  '      if (!sh) return ok({ok:false, error:"hoja_no_encontrada"});',
+  '      var datos = sh.getDataRange().getValues();',
+  '      for (var i = 1; i < datos.length; i++) {',
+  '        if (String(datos[i][0]) === String(d.clave)) {',
+  '          sh.getRange(i+1,5,1,1).setValue("Cancelada");',
+  '          return ok({ok:true, accion:"cancelada"});',
+  '        }',
+  '      }',
+  '      return ok({ok:false, error:"no_encontrado"});',
+  '    }',
+  '',
+  '    // ── OPERACIONES GENERALES ────────────────────────────────────────────',
+  '    var sh = ss.getSheetByName(d.hoja);',
+  '    if (!sh) return ok({ok:false, error:"Hoja no encontrada: "+d.hoja});',
+  '    if (d.accion === "agregar") {',
+  '      sh.appendRow(d.fila);',
+  '      return ok({ok:true, accion:"agregar"});',
+  '    }',
+  '    if (d.accion === "actualizar") {',
+  '      var datos = sh.getDataRange().getValues();',
+  '      for (var i = 1; i < datos.length; i++) {',
+  '        if (String(datos[i][0]) === String(d.clave)) {',
+  '          sh.getRange(i+1,1,1,d.fila.length).setValues([d.fila]);',
+  '          return ok({ok:true, accion:"actualizar", fila:i+1});',
+  '        }',
+  '      }',
+  '      sh.appendRow(d.fila);',
+  '      return ok({ok:true, accion:"agregar-nuevo"});',
+  '    }',
+  '    if (d.accion === "eliminar") {',
+  '      var datos = sh.getDataRange().getValues();',
+  '      for (var i = 1; i < datos.length; i++) {',
+  '        if (String(datos[i][0]) === String(d.clave)) {',
+  '          sh.getRange(i+1,sh.getLastColumn(),1,1).setValue("ELIMINADO");',
+  '          return ok({ok:true, accion:"eliminar"});',
+  '        }',
+  '      }',
+  '      return ok({ok:false, error:"No encontrado: "+d.clave});',
+  '    }',
+  '    return ok({ok:false, error:"Accion desconocida: "+d.accion});',
+  '  } catch(err) { return ok({ok:false, error:err.message}); }',
+  '}',
+  '',
+  '// ── LECTURA (GET) ────────────────────────────────────────────────────────',
+  'function doGet(e) {',
+  '  try {',
+  '    // Validar token si está configurado',
+  '    if (CAP_TOKEN && e.parameter.token !== CAP_TOKEN)',
+  '      return ok({ok:false, error:\'unauthorized\', msg:\'Token inválido o ausente.\'});',
+  '    var accion = (e.parameter.accion || "").toLowerCase();',
+  '    var hoja   = e.parameter.hoja   || "";',
+  '    if (accion === "leer" && hoja) {',
+  '      var ss  = SpreadsheetApp.getActiveSpreadsheet();',
+  '      var sh  = ss.getSheetByName(hoja);',
+  '      if (!sh) return ok({ok:false, error:"Hoja no encontrada: "+hoja});',
+  '      var vals = sh.getDataRange().getValues();',
+  '      var datos = vals.slice(1).filter(function(f){',
+  '        return f[0] !== "" && f[0] !== null;',
+  '      });',
+  '      return ok({ok:true, hoja:hoja, datos:datos, total:datos.length});',
+  '    }',
+  '    return ok({ok:true, estado:"Sistema activo", version:"4.0"});',
+  '  } catch(err) { return ok({ok:false, error:err.message}); }',
+  '}',
+  '',
+  '// ── HELPER ───────────────────────────────────────────────────────────────',
+  'function ok(obj) {',
+  '  var out = ContentService.createTextOutput(JSON.stringify(obj));',
+  '  out.setMimeType(ContentService.MimeType.JSON);',
+  '  return out;',
+  '}',
+  '',
+  '// ── SETUP: ejecutar UNA vez para instalaciones nuevas ────────────────────',
+  'function crearHojas() {',
+  '  var ss = SpreadsheetApp.getActiveSpreadsheet();',
+  '  var hojas = [',
+  '    { nombre:"Docentes",      cols:["RUT","Nombre","Email","Decanato/Area","PIN","Fecha","Estado"] },',
+  '    { nombre:"Eventos",       cols:["ID","Nombre","Tipo","Fecha","Hora","Lugar","Cupos","Relator","Descripcion","Creado","Estado","Duracion","EstadoPublicacion","FechaApertura"] },',
+  '    { nombre:"Inscripciones", cols:["ID","EventoID","RUT","Fecha","Estado"] },',
+  '    { nombre:"Asistencias",   cols:["ID","EventoID","RUT","Fecha","RegistradoPor"] },',
+  '    { nombre:"Log",           cols:["ID","Fecha","Hora","Tipo","Usuario","EventoID","Detalle"] },',
+  '    { nombre:"Configuracion", cols:["Clave","Valor"] },',
+  '  ];',
+  '  hojas.forEach(function(def) {',
+  '    var sh = ss.getSheetByName(def.nombre);',
+  '    if (!sh) sh = ss.insertSheet(def.nombre);',
+  '    if (sh.getLastRow() === 0) {',
+  '      sh.appendRow(def.cols);',
+  '      sh.getRange(1,1,1,def.cols.length)',
+  '        .setFontWeight("bold").setBackground("#1E3A8A").setFontColor("#FFFFFF");',
+  '      sh.setFrozenRows(1);',
+  '    }',
+  '  });',
+  '  var shCfg = ss.getSheetByName("Configuracion");',
+  '  if (shCfg && shCfg.getLastRow() <= 1) {',
+  '    [["nombre_institucion","Universidad"],',
+  '     ["max_inscripciones_dia","3"],',
+  '     ["aviso_cupos_bajos","20"],',
+  '     ["modo_mantenimiento","false"],',
+  '     ["dominio_email",""]',
+  '    ].forEach(function(r){ shCfg.appendRow(r); });',
+  '  }',
+  '  SpreadsheetApp.getUi().alert("Hojas creadas correctamente (v4.0).");',
+  '}',
+].join("\n");
+
+function SettingsPanel({open,onClose}) {
+  const [tab,setTab] = useState('gs');
+  const [cfg,setCfg] = useState(getSPConfig);
+  const [sysCfg,setSysCfgState] = useState(getSysConfig);
+
+  function save() { saveSPConfig(cfg); onClose(); }
+
+  function saveSys() {
+    setSysConfig(sysCfg);
+    // Sincronizar a GS si está conectado
+    const spCfg = getSPConfig();
+    if(spCfg.mode==='googlesheets' && spCfg.gsUrl) {
+      Object.entries(sysCfg).forEach(([k,v]) => GS.setConfig(k,v).catch(()=>{}));
+    }
+    onClose();
+  }
+
+  if(!open) return null;
+  return <div style={{position:'fixed',inset:0,zIndex:900,display:'flex',justifyContent:'flex-end'}}
+    onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="slide-in" style={{width:380,background:'#fff',height:'100%',overflow:'auto',
+      boxShadow:'-8px 0 32px rgba(15,23,42,.12)',borderLeft:'1px solid #E2E8F0'}}>
+      <div style={{padding:'20px 24px 16px',borderBottom:'1px solid #F1F5F9',
+        display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:700}}>Configuración</div>
+          <div style={{fontSize:12,color:'#94A3B8',marginTop:2}}>Sistema de Capacitaciones</div>
+        </div>
+        <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'#94A3B8',padding:4}}>
+          <Icon name="x" size={18}/>
+        </button>
+      </div>
+
+      <div style={{display:'flex',borderBottom:'1px solid #F1F5F9',overflowX:'auto'}}>
+        {[['gs','Google Sheets'],['sistema','Sistema'],['admin','Administrador'],['ui','Apariencia']].map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{flex:1,padding:'10px 0',border:'none',
+            background:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,
+            color:tab===id?'#1E3A8A':'#94A3B8',
+            borderBottom:tab===id?'2px solid #1E3A8A':'2px solid transparent',
+            transition:'all .12s',whiteSpace:'nowrap',minWidth:80}}>{label}</button>
+        ))}
+      </div>
+
+      {/* ── Google Sheets ── */}
+      {tab==='gs'&&<div style={{padding:24,display:'flex',flexDirection:'column',gap:18}}>
+
+        {/* Modo */}
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {[
+            {v:'local',       icon:'db',   label:'Local (sin conexión)',   sub:'Datos solo en este navegador.',              c:'#475569'},
+            {v:'googlesheets',icon:'wifi', label:'Google Sheets',          sub:'Lee y escribe en tu hoja en tiempo real.',   c:'#15803D'},
+          ].map(({v,icon,label,sub,c})=>(
+            <button key={v} onClick={()=>setCfg(p=>({...p,mode:v}))} style={{
+              display:'flex',gap:12,alignItems:'flex-start',padding:'10px 12px',borderRadius:8,
+              textAlign:'left',border:`1.5px solid ${cfg.mode===v?c:'#E2E8F0'}`,
+              background:cfg.mode===v?c+'14':'#fff',cursor:'pointer',fontFamily:'inherit',
+              transition:'all .12s',width:'100%'}}>
+              <Icon name={icon} size={15} color={cfg.mode===v?c:'#94A3B8'} style={{marginTop:2,flexShrink:0}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:cfg.mode===v?c:'#0F172A'}}>{label}</div>
+                <div style={{fontSize:11,color:'#94A3B8',marginTop:2,lineHeight:1.4}}>{sub}</div>
+              </div>
+              {cfg.mode===v&&<div style={{fontSize:14,color:c,fontWeight:700}}>✓</div>}
+            </button>
+          ))}
+        </div>
+
+        {cfg.mode==='googlesheets'&&<>
+          <Field label="URL del Apps Script Web App" hint="Configuración → Implementar → Aplicación web">
+            <TInput value={cfg.gsUrl||''} onChange={e=>setCfg(p=>({...p,gsUrl:e.target.value}))}
+              placeholder="https://script.google.com/macros/s/AKfycb.../exec"/>
+          </Field>
+
+          {/* Estado de DEPLOY_CONFIG */}
+          {(DEPLOY_CONFIG.gsUrl || DEPLOY_CONFIG.gsToken) && (
+            <div style={{padding:'10px 14px',borderRadius:8,background:'#F8FAFC',
+              border:'1px solid #E2E8F0',fontSize:12,display:'flex',flexDirection:'column',gap:6}}>
+              <div style={{fontWeight:700,color:'#475569',marginBottom:2}}>Configuración de despliegue</div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{color:'#64748B'}}>URL configurada</span>
+                <span style={{fontWeight:600,color:DEPLOY_CONFIG.gsUrl?'#15803D':'#B91C1C'}}>
+                  {DEPLOY_CONFIG.gsUrl ? '✓ Sí' : '✗ No'}
+                </span>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{color:'#64748B'}}>Token de seguridad</span>
+                <span style={{fontWeight:600,color:DEPLOY_CONFIG.gsToken?'#15803D':'#B45309'}}>
+                  {DEPLOY_CONFIG.gsToken ? '✓ Configurado' : '⚠ Sin token'}
+                </span>
+              </div>
+              <div style={{fontSize:11,color:'#94A3B8',marginTop:2,lineHeight:1.5}}>
+                Edita <code style={{background:'#F1F5F9',padding:'1px 4px',borderRadius:3}}>DEPLOY_CONFIG</code> en el HTML para cambiar estos valores.
+              </div>
+            </div>
+          )}
+
+          {/* Botón de prueba */}
+          <button onClick={async()=>{
+            if(!cfg.gsUrl){alert('Primero ingresa la URL');return;}
+            try{
+              const token = DEPLOY_CONFIG.gsToken || '';
+              const url = cfg.gsUrl+'?accion=leer&hoja=Docentes&token='+encodeURIComponent(token);
+              const r=await fetch(url,{redirect:'follow'});
+              const j=await r.json();
+              if(j.error==='unauthorized')
+                alert('✗ Token incorrecto. Verifica que DEPLOY_CONFIG.gsToken coincida con CAP_TOKEN en el Apps Script.');
+              else
+                alert(j.ok ? '✓ Conexión exitosa. Docentes: '+(j.datos||[]).length : '✗ Error: '+JSON.stringify(j));
+            }catch(e){alert('✗ No se pudo conectar: '+e.message);}
+          }} style={{padding:'8px 14px',borderRadius:8,border:'1px solid #BBF7D0',background:'#F0FDF4',
+            color:'#15803D',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+            display:'flex',alignItems:'center',gap:6}}>
+            <Icon name="wifi" size={14}/>Probar conexión
+          </button>
+
+          {/* Guía paso a paso */}
+          <div style={{background:'#F8FAFC',borderRadius:10,padding:16,border:'1px solid #E2E8F0'}}>
+            <div style={{fontSize:12,fontWeight:700,color:'#64748B',marginBottom:12,
+              textTransform:'uppercase',letterSpacing:.5}}>Instalación nueva — 6 pasos</div>
+            {[
+              {n:'1',t:'Crear la hoja de Google Sheets',
+               d:'Crea un archivo en sheets.google.com. Las 6 hojas se crean automáticamente en el paso 3.'},
+              {n:'2',t:'Pegar el código Apps Script',
+               d:'Extensiones → Apps Script → borrar código existente → pegar el código de abajo → guardar (Ctrl+S).'},
+              {n:'3',t:'Configurar el token de seguridad',
+               d:'En el Apps Script, busca la línea var CAP_TOKEN = \'\' y escribe un valor secreto (ej: cap-2025-miToken). Luego edita DEPLOY_CONFIG.gsToken en el HTML con el mismo valor exacto.'},
+              {n:'4',t:'Ejecutar crearHojas (solo instalación nueva)',
+               d:'En el menú desplegable elige crearHojas → Ejecutar. Esto crea las 6 hojas con encabezados y valores por defecto.'},
+              {n:'5',t:'Desplegar como Web App',
+               d:'Implementar → Nueva implementación → Tipo: Aplicación web → Ejecutar como: Yo → Acceso: Cualquier usuario → Implementar → copiar URL.'},
+              {n:'6',t:'Completar DEPLOY_CONFIG en el HTML y probar',
+               d:'Pega la URL en DEPLOY_CONFIG.gsUrl y define el token. El modo Google Sheets se activa automáticamente. Todos los dispositivos que abran este HTML se conectarán sin configuración adicional.'},
+            ].map(({n,t,d})=>(
+              <div key={n} style={{display:'flex',gap:12,marginBottom:12,alignItems:'flex-start'}}>
+                <div style={{width:22,height:22,borderRadius:'50%',background:'#15803D',color:'#fff',
+                  display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,
+                  fontWeight:800,flexShrink:0,minWidth:22}}>{n}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#0F172A',marginBottom:2}}>{t}</div>
+                  <div style={{fontSize:11,color:'#64748B',lineHeight:1.5,wordBreak:'break-word',overflowWrap:'break-word'}}>{d}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{marginTop:4,padding:'8px 12px',background:'#EFF6FF',borderRadius:8,
+              border:'1px solid #BFDBFE',fontSize:11,color:'#1D4ED8',lineHeight:1.5}}>
+              <strong>Si ya tenías v3.0 desplegada:</strong> pega el nuevo código, define CAP_TOKEN,
+              luego Implementar → Administrar implementaciones → editar → Nueva versión → Implementar.
+              No ejecutes crearHojas de nuevo. La URL no cambia.
+            </div>
+          </div>
+
+          {/* Columnas por hoja */}
+          <div style={{background:'#F0FDF4',borderRadius:8,padding:14,border:'1px solid #BBF7D0',fontSize:11,color:'#166534'}}>
+            <div style={{fontWeight:700,marginBottom:8,fontSize:12}}>Columnas requeridas por hoja:</div>
+            {[
+              ['Docentes',      'RUT · Nombre · Email · Decanato/Área · PIN · Fecha · Estado'],
+              ['Eventos',       'ID · Nombre · Tipo · Fecha · Hora · Lugar · Cupos · Relator · Descripcion · Creado · Estado · Duración · EstadoPublicacion · FechaApertura'],
+              ['Inscripciones', 'ID · EventoID · RUT · Fecha · Estado'],
+              ['Asistencias',   'ID · EventoID · RUT · Fecha · RegistradoPor'],
+              ['Log',           'ID · Fecha · Hora · Tipo · Usuario · EventoID · Detalle'],
+              ['Configuracion', 'Clave · Valor'],
+            ].map(([h,cols])=>(
+              <div key={h} style={{marginBottom:6,paddingBottom:6,borderBottom:'1px solid #BBF7D0'}}>
+                <span style={{fontWeight:700,fontFamily:'monospace',color:'#15803D'}}>{h}</span>
+                <div style={{marginTop:2,color:'#166534',wordBreak:'break-word'}}>{cols}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Nota de escala */}
+          <div style={{background:'#FFF7ED',borderRadius:8,padding:14,border:'1px solid #FED7AA',fontSize:12,color:'#92400E'}}>
+            <div style={{fontWeight:700,marginBottom:4}}>⚠ Escalabilidad de Google Sheets</div>
+            <div style={{lineHeight:1.6}}>
+              Google Sheets soporta hasta <strong>10 millones de celdas</strong> por archivo. Con 4 hojas y ~15 columnas promedio, puedes manejar cómodamente <strong>~100.000 filas de asistencia</strong> sin problemas.
+              Si en el futuro el sistema crece más, la migración más natural es mover los datos a <strong>Google BigQuery</strong> (gratis hasta 10 GB/mes) o una base de datos SQL, manteniendo el mismo Apps Script como intermediario.
+              Para datos históricos anteriores al lanzamiento: puedes pegarlos directamente en las hojas de Google Sheets siguiendo el formato de columnas de arriba.
+            </div>
+          </div>
+
+          {/* CSV import guidance */}
+          <div style={{background:'#F8FAFC',borderRadius:8,padding:14,border:'1px solid #E2E8F0',fontSize:12,color:'#475569'}}>
+            <div style={{fontWeight:700,marginBottom:4,color:'#0F172A'}}>📋 Importar datos históricos</div>
+            <div style={{lineHeight:1.6}}>
+              Para cargar datos previos al lanzamiento de esta herramienta:<br/>
+              1. Prepara un archivo Excel/CSV con las columnas indicadas arriba.<br/>
+              2. En Google Sheets, ve a la hoja correspondiente → <strong>Archivo → Importar → Subir</strong>.<br/>
+              3. Selecciona "Agregar al spreadsheet actual" y elige la hoja de destino.<br/>
+              4. Los registros quedarán disponibles inmediatamente en el sistema.
+            </div>
+          </div>
+
+          {/* Código Apps Script */}
+          <div style={{borderRadius:10,overflow:'hidden',border:'1px solid #E2E8F0'}}>
+            <div style={{background:'#1E293B',padding:'10px 14px',display:'flex',
+              alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:11,fontWeight:700,color:'#4ADE80',fontFamily:'monospace',letterSpacing:.5}}>
+                CÓDIGO — pegar en Apps Script
+              </span>
+              <span style={{fontSize:10,color:'#475569',fontFamily:'monospace'}}>Google Apps Script</span>
+            </div>
+            <pre style={{margin:0,padding:'14px 16px',background:'#0F172A',fontSize:11,color:'#94A3B8',
+              fontFamily:'monospace',lineHeight:1.7,overflowX:'auto',whiteSpace:'pre'}}>{APPS_SCRIPT_CODE}
+            </pre>
+          </div>
+        </>}
+
+        <Btn onClick={save} full><Icon name="cloud" size={15}/>Guardar configuración</Btn>
+        <Btn variant="ghost" onClick={()=>{DB.reset();window.location.reload();}} size="sm" style={{fontSize:12}}>
+          Restablecer datos de ejemplo
+        </Btn>
+      </div>}
+
+      {/* ── Credenciales Admin ── */}
+      {/* ── Sistema ── */}
+      {tab==='sistema'&&<div style={{padding:24,display:'flex',flexDirection:'column',gap:20}}>
+        <div style={{fontSize:13,color:'#64748B',lineHeight:1.5}}>
+          Parámetros del sistema. Estos valores se leen desde la hoja <strong>Configuracion</strong> de Google Sheets y se aplican a todos los usuarios.
+        </div>
+        <Field label="Nombre de la institución" hint="Aparece en documentos exportados">
+          <TInput value={sysCfg.nombre_institucion||''} onChange={e=>setSysCfgState(p=>({...p,nombre_institucion:e.target.value}))} placeholder="Universidad"/>
+        </Field>
+        <Field label="Máx. inscripciones por día" hint="Límite de eventos por docente en una misma fecha (por defecto: 3)">
+          <TInput value={sysCfg.max_inscripciones_dia||'3'} onChange={e=>setSysCfgState(p=>({...p,max_inscripciones_dia:e.target.value}))} type="number" style={{width:90}}/>
+        </Field>
+        <Field label="Alerta de cupos bajos (%)" hint="Mostrar aviso cuando quede este % de cupos (por defecto: 20)">
+          <TInput value={sysCfg.aviso_cupos_bajos||'20'} onChange={e=>setSysCfgState(p=>({...p,aviso_cupos_bajos:e.target.value}))} type="number" style={{width:90}}/>
+        </Field>
+        <Field label="Modo mantenimiento" hint="Cuando está activo, los docentes ven un aviso de sistema en pausa">
+          <div style={{display:'flex',gap:10,marginTop:4}}>
+            {[['false','Desactivado'],['true','Activado']].map(([v,l])=>(
+              <button key={v} onClick={()=>setSysCfgState(p=>({...p,modo_mantenimiento:v}))}
+                style={{padding:'6px 16px',borderRadius:8,border:'1.5px solid',cursor:'pointer',fontFamily:'inherit',
+                  fontSize:13,fontWeight:600,transition:'all .12s',
+                  borderColor:(sysCfg.modo_mantenimiento||'false')===v?'#1E3A8A':'#E2E8F0',
+                  background:(sysCfg.modo_mantenimiento||'false')===v?'#EFF6FF':'transparent',
+                  color:(sysCfg.modo_mantenimiento||'false')===v?'#1E3A8A':'#94A3B8'}}>{l}</button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Dominio de correo permitido" hint="Ej: @universidad.cl — deja vacío para no restringir">
+          <TInput value={sysCfg.dominio_email||''} onChange={e=>setSysCfgState(p=>({...p,dominio_email:e.target.value}))}
+            placeholder="@universidad.cl"/>
+        </Field>
+        <Btn onClick={saveSys} full><Icon name="checkc" size={15}/>Guardar parámetros</Btn>
+      </div>}
+
+      {tab==='admin'&&<div style={{padding:24,display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{fontSize:13,color:'#64748B',lineHeight:1.5,marginBottom:4}}>
+          Credenciales del acceso administrador. Cámbialas antes de poner en producción.
+        </div>
+        <Field label="Usuario administrador">
+          <TInput value={cfg.adminUser||'admin'} onChange={e=>setCfg(p=>({...p,adminUser:e.target.value}))}
+            placeholder="admin"/>
+        </Field>
+        <Field label="Contraseña administrador">
+          <input type="password" value={cfg.adminPass||''} onChange={e=>setCfg(p=>({...p,adminPass:e.target.value}))}
+            placeholder="••••••" style={{padding:'9px 12px',borderRadius:8,border:'1px solid #E2E8F0',
+            fontSize:14,fontFamily:'inherit',outline:'none',width:'100%',color:'#0F172A'}}/>
+        </Field>
+        <Btn onClick={save} full><Icon name="check" size={15}/>Guardar credenciales</Btn>
+      </div>}
+
+      {/* ── Apariencia ── */}
+      {tab==='ui'&&<div style={{padding:24,display:'flex',flexDirection:'column',gap:18}}>
+        <div style={{fontSize:13,color:'#64748B',lineHeight:1.5}}>
+          Personaliza los colores del sistema. Los cambios se aplican en tiempo real.
+        </div>
+        {[['Color Administrador','--adm','#1E3A8A'],['Color Portal Docente','--doc','#0D6E68'],['Color de fondo','--bg','#F1F5F9']].map(([label,varr,def])=>(
+          <Field key={varr} label={label}>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <input type="color" defaultValue={def}
+                onChange={e=>document.documentElement.style.setProperty(varr,e.target.value)}
+                style={{width:44,height:36,border:'1px solid #E2E8F0',borderRadius:8,
+                cursor:'pointer',padding:'2px 3px',flexShrink:0}}/>
+              <span style={{fontSize:12,color:'#94A3B8',fontFamily:'monospace'}}>{varr}</span>
+            </div>
+          </Field>
+        ))}
+        <Btn variant="ghost" size="sm" onClick={()=>{
+          [['--adm','#1E3A8A'],['--doc','#0D6E68'],['--bg','#F1F5F9']].forEach(([v,d])=>
+            document.documentElement.style.setProperty(v,d));
+        }}>↺ Restablecer colores</Btn>
+      </div>}
+    </div>
+  </div>;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ADMIN VIEWS
+   ════════════════════════════════════════════════════════════════ */
+function AdminDashboard({navigate,tick}) {
+  const events=DB.events(),teachers=DB.teachers(),regs=DB.regs(),atts=DB.atts();
+  const upcoming=events.filter(e=>!isPast(e.fecha));
+  const todayEvs=events.filter(e=>isToday(e.fecha));
+  const cfg=getSPConfig();
+
+  return <div className="fade-in">
+    <PageHeader title="Dashboard" subtitle="Resumen general del sistema de capacitaciones"/>
+    {cfg.mode==='googlesheets'&&<div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,
+      padding:'8px 14px',background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:8,fontSize:13,color:'#15803D'}}>
+      <Icon name="wifi" size={14}/> Google Sheets activo — datos sincronizados en tiempo real
+    </div>}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:16,marginBottom:32}}>
+      <StatCard label="Docentes registrados"   value={teachers.length} icon="users"    color="#1E3A8A"/>
+      <StatCard label="Eventos activos"         value={upcoming.length} icon="calendar" color="#0D9488"/>
+      <StatCard label="Inscripciones totales"   value={regs.length}     icon="clip"     color="#7C3AED"/>
+      <StatCard label="Asistencias confirmadas" value={atts.length}     icon="checkc"   color="#15803D"/>
+    </div>
+    {todayEvs.length>0&&<div style={{marginBottom:28}}>
+      <h2 style={{fontSize:15,fontWeight:700,marginBottom:12}}>Eventos de hoy</h2>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:14}}>
+        {todayEvs.map(e=><EventCard key={e.id} event={e} actionLabel="Registrar asistencia"
+          actionVariant="accent" onAction={()=>navigate('a-evento',e.id,'checkin')}/>)}
+      </div>
+    </div>}
+    <h2 style={{fontSize:15,fontWeight:700,marginBottom:12}}>Próximos eventos</h2>
+    <Card p={0}>
+      <Table cols={['Nombre','Tipo','Fecha','Lugar','Inscritos / Cupos']}
+        empty={<Empty icon="calendar" title="Sin eventos próximos"/>}
+        rows={events.filter(e=>isUpcoming(e.fecha)).sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(e=>{
+          const cnt=DB.eventRegs(e.id).length;
+          return <tr key={e.id} style={{cursor:'pointer'}}
+            onMouseEnter={ev=>ev.currentTarget.style.background='#F8FAFC'}
+            onMouseLeave={ev=>ev.currentTarget.style.background=''}
+            onClick={()=>navigate('a-evento',e.id)}>
+            <Td><span style={{fontWeight:600,color:'#0F172A'}}>{e.nombre}</span></Td>
+            <Td><Badge text={e.tipo}/></Td>
+            <Td>{fmtDate(e.fecha)}</Td>
+            <Td>{e.lugar}</Td>
+            <Td><span style={{color:cnt>=e.cupos?'#B91C1C':'#475569',fontWeight:500}}>{cnt}/{e.cupos}</span></Td>
+          </tr>;
+        })}/>
+    </Card>
+  </div>;
+}
+
+function EventEditModal({open,onClose,onSave,event}) {
+  const toStr = v => v===undefined||v===null?'':String(v);
+  const [f,setF]=useState({});
+  const [err,setErr]=useState({});
+  useEffect(()=>{
+    if(open&&event) setF({
+      nombre:toStr(event.nombre), tipo:toStr(event.tipo)||'Acompañamiento',
+      fecha:toStr(event.fecha), hora:toStr(event.hora)||'09:00',
+      duracion:toStr(event.duracion)||'60', lugar:toStr(event.lugar),
+      cupos:toStr(event.cupos), relator:toStr(event.relator),
+      descripcion:toStr(event.descripcion),
+      estadoPublicacion:toStr(event.estadoPublicacion)||'Abierto',
+      fechaApertura:toStr(event.fechaApertura)||''
+    });
+  },[open,event]);
+  const upd=(k,v)=>setF(p=>({...p,[k]:v}));
+  async function save() {
+    const e={};
+    if(!f.nombre)e.nombre='Requerido';if(!f.fecha)e.fecha='Requerido';
+    if(!f.lugar)e.lugar='Requerido';if(!f.relator)e.relator='Requerido';
+    if(!f.cupos||isNaN(+f.cupos))e.cupos='Número válido';
+    if(Object.keys(e).length){setErr(e);return;}
+    const evData={...event,...f,cupos:+f.cupos,duracion:+f.duracion||60};
+    const cfg=getSPConfig();
+    if(cfg.mode==='googlesheets') await GS.updateEvento(evData);
+    DB.updateEvent(evData);
+    onSave();setErr({});
+  }
+  if(!event) return null;
+  return <Modal open={open} onClose={onClose} title="Editar evento" width={620}>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+      <Field label="Nombre" required error={err.nombre} style={{gridColumn:'1/-1'}}>
+        <TInput value={f.nombre||''} onChange={e=>upd('nombre',e.target.value)} placeholder="Ej: Taller de Innovación Pedagógica"/>
+      </Field>
+      <Field label="Tipo"><SInput value={f.tipo||'Acompañamiento'} onChange={e=>upd('tipo',e.target.value)} options={['Acompañamiento','Charla','Congreso','Curso','Otro','Seminario','Taller']}/></Field>
+      <Field label="Cupos" required error={err.cupos}><TInput value={f.cupos||''} onChange={e=>upd('cupos',e.target.value)} type="number" placeholder="30"/></Field>
+      <Field label="Fecha" required error={err.fecha}><TInput value={f.fecha||''} onChange={e=>upd('fecha',e.target.value)} type="date"/></Field>
+      <Field label="Hora (24h)"><HoraInput value={f.hora||'09:00'} onChange={v=>upd('hora',v)}/></Field>
+      <Field label="Duración">
+        <SInput value={String(f.duracion||'60')} onChange={e=>upd('duracion',e.target.value)}
+          options={[{v:'30',l:'30 min'},{v:'45',l:'45 min'},{v:'60',l:'1 hora'},{v:'90',l:'1 h 30 min'},{v:'120',l:'2 horas'},{v:'180',l:'3 horas'},{v:'240',l:'4 horas'}]}/>
+      </Field>
+      <Field label="Lugar" required error={err.lugar} style={{gridColumn:'1/-1'}}>
+        <TInput value={f.lugar||''} onChange={e=>upd('lugar',e.target.value)} placeholder="Sala A101, Edificio Académico"/>
+      </Field>
+      <Field label="Relator" required error={err.relator} style={{gridColumn:'1/-1'}}>
+        <TInput value={f.relator||''} onChange={e=>upd('relator',e.target.value)} placeholder="Dr. Nombre Apellido"/>
+      </Field>
+      <Field label="Descripción" style={{gridColumn:'1/-1'}}>
+        <TArea value={f.descripcion||''} onChange={e=>upd('descripcion',e.target.value)} placeholder="Objetivos y metodología del evento…"/>
+      </Field>
+      <Field label="Estado de publicación" hint="Borrador: solo admin. Publicado: visible pero sin inscripción. Abierto: inscripción habilitada.">
+        <SInput value={f.estadoPublicacion||'Abierto'} onChange={e=>upd('estadoPublicacion',e.target.value)}
+          options={[{v:'Borrador',l:'Borrador — solo visible para el admin'},{v:'Publicado',l:'Publicado — visible sin inscripción'},{v:'Abierto',l:'Abierto — inscripción habilitada'}]}/>
+      </Field>
+      <Field label="Apertura automática (opcional)" hint="Fecha en que se habilitará la inscripción automáticamente">
+        <TInput value={f.fechaApertura||''} onChange={e=>upd('fechaApertura',e.target.value)} type="date"/>
+      </Field>
+    </div>
+    <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:20}}>
+      <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+      <Btn onClick={save}><Icon name="edit" size={16}/>Guardar cambios</Btn>
+    </div>
+  </Modal>;
+}
+
+function EventFormModal({open,onClose,onSave}) {
+  const empty={nombre:'',tipo:'Acompañamiento',fecha:'',hora:'09:00',duracion:'60',lugar:'',cupos:'',relator:'',descripcion:'',estadoPublicacion:'Borrador',fechaApertura:''};
+  const [f,setF]=useState(empty);
+  const [err,setErr]=useState({});
+  const upd=(k,v)=>setF(p=>({...p,[k]:v}));
+  async function save() {
+    const e={};
+    if(!f.nombre)e.nombre='Requerido';if(!f.fecha)e.fecha='Requerido';
+    if(!f.lugar)e.lugar='Requerido';if(!f.relator)e.relator='Requerido';
+    if(!f.cupos||isNaN(+f.cupos))e.cupos='Número válido';
+    if(Object.keys(e).length){setErr(e);return;}
+    // Generate ID here so GS and localStorage share the same one
+    const newId = 'e-' + Math.random().toString(36).slice(2,9);
+    const evData = {...f, cupos:+f.cupos, id:newId};
+    const cfg=getSPConfig();
+    if(cfg.mode==='googlesheets') await GS.addEvento(evData);
+    DB.addEvent(evData);
+    onSave();setF(empty);setErr({});
+  }
+  return <Modal open={open} onClose={onClose} title="Crear nuevo evento" width={620}>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+      <Field label="Nombre" required error={err.nombre} style={{gridColumn:'1/-1'}}>
+        <TInput value={f.nombre} onChange={e=>upd('nombre',e.target.value)} placeholder="Ej: Taller de Innovación Pedagógica"/>
+      </Field>
+      <Field label="Tipo"><SInput value={f.tipo} onChange={e=>upd('tipo',e.target.value)} options={['Acompañamiento','Charla','Congreso','Curso','Otro','Seminario','Taller']}/></Field>
+      <Field label="Cupos" required error={err.cupos}><TInput value={f.cupos} onChange={e=>upd('cupos',e.target.value)} type="number" placeholder="30"/></Field>
+      <Field label="Fecha" required error={err.fecha}><TInput value={f.fecha} onChange={e=>upd('fecha',e.target.value)} type="date"/></Field>
+      <Field label="Hora (24h)"><HoraInput value={f.hora} onChange={v=>upd('hora',v)}/></Field>
+      <Field label="Duración">
+        <SInput value={f.duracion} onChange={e=>upd('duracion',e.target.value)}
+          options={[{v:'30',l:'30 min'},{v:'45',l:'45 min'},{v:'60',l:'1 hora'},{v:'90',l:'1 h 30 min'},{v:'120',l:'2 horas'},{v:'180',l:'3 horas'},{v:'240',l:'4 horas'}]}/>
+      </Field>
+      <Field label="Lugar" required error={err.lugar} style={{gridColumn:'1/-1'}}>
+        <TInput value={f.lugar} onChange={e=>upd('lugar',e.target.value)} placeholder="Sala A101, Edificio Académico"/>
+      </Field>
+      <Field label="Relator" required error={err.relator} style={{gridColumn:'1/-1'}}>
+        <TInput value={f.relator} onChange={e=>upd('relator',e.target.value)} placeholder="Dr. Nombre Apellido"/>
+      </Field>
+
+      <Field label="Descripción" style={{gridColumn:'1/-1'}}>
+        <TArea value={f.descripcion} onChange={e=>upd('descripcion',e.target.value)} placeholder="Objetivos y metodología del evento…"/>
+      </Field>
+      <Field label="Estado de publicación" hint="Borrador: solo admin. Publicado: visible pero sin inscripción. Abierto: inscripción habilitada.">
+        <SInput value={f.estadoPublicacion} onChange={e=>upd('estadoPublicacion',e.target.value)}
+          options={[{v:'Borrador',l:'Borrador — solo visible para el admin'},{v:'Publicado',l:'Publicado — visible sin inscripción'},{v:'Abierto',l:'Abierto — inscripción habilitada'}]}/>
+      </Field>
+      <Field label="Apertura automática (opcional)" hint="Fecha en que se habilitará la inscripción automáticamente">
+        <TInput value={f.fechaApertura} onChange={e=>upd('fechaApertura',e.target.value)} type="date"/>
+      </Field>
+    </div>
+    <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:20}}>
+      <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+      <Btn onClick={save}><Icon name="plus" size={16}/>Crear evento</Btn>
+    </div>
+  </Modal>;
+}
+
+const PAST_LIMIT = 5; // number of past events to show before collapsing
+
+function AdminEventos({navigate,tick,setTick}) {
+  const [showForm,setShowForm]=useState(false);
+  const [filter,setFilter]=useState('all');
+  const [q,setQ]=useState('');
+  const [showAllPast,setShowAllPast]=useState(false);
+  const events=DB.events();
+
+  const byFilter=events.filter(e=>filter==='upcoming'?isUpcoming(e.fecha)&&!isToday(e.fecha):filter==='today'?isToday(e.fecha):filter==='past'?(isPast(e.fecha)||DB.isClosed(e.id)):true);
+  const bySearch=!q.trim()?byFilter:byFilter.filter(e=>{
+    const ql=q.toLowerCase();
+    return e.nombre.toLowerCase().includes(ql)||e.tipo.toLowerCase().includes(ql)||
+      (e.lugar||'').toLowerCase().includes(ql)||(e.relator||'').toLowerCase().includes(ql)||
+      (e.fecha||'').includes(ql)||(e.fecha||'').slice(0,4).includes(ql);
+  });
+  const sorted=bySearch.sort((a,b)=>b.fecha.localeCompare(a.fecha));
+
+  const isPastFilter=filter==='past'||(filter==='all'&&!q.trim());
+  const pastInAll=sorted.filter(e=>isPast(e.fecha));
+  const nonPast=sorted.filter(e=>!isPast(e.fecha));
+  let displayed=sorted;
+  let pastHidden=0;
+  if(filter==='all'&&!q.trim()&&!showAllPast&&pastInAll.length>PAST_LIMIT) {
+    pastHidden=pastInAll.length-PAST_LIMIT;
+    displayed=[...nonPast,...pastInAll.slice(0,PAST_LIMIT)];
+  }
+  if(filter==='past'&&!q.trim()&&!showAllPast&&sorted.length>PAST_LIMIT) {
+    pastHidden=sorted.length-PAST_LIMIT;
+    displayed=sorted.slice(0,PAST_LIMIT);
+  }
+
+  return <div className="fade-in">
+    <PageHeader title="Eventos" subtitle={`${events.length} eventos en el sistema`}
+      action={<Btn onClick={()=>setShowForm(true)}><Icon name="plus" size={16}/>Nuevo evento</Btn>}/>
+    <FilterPills value={filter} onChange={v=>{setFilter(v);setQ('');setShowAllPast(false);}}
+      options={[['all','Todos'],['upcoming','Próximos'],['today','Hoy'],['past','Realizados']]}/>
+    <div style={{display:'flex',gap:10,marginBottom:20,alignItems:'center'}}>
+      <div style={{position:'relative',flex:1,maxWidth:400}}>
+        <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'#94A3B8',pointerEvents:'none'}}>
+          <Icon name="search" size={15}/>
+        </div>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nombre, tipo, relator, año…"
+          style={{paddingLeft:38,padding:'9px 12px 9px 38px',borderRadius:8,border:'1px solid #E2E8F0',
+            fontSize:13,fontFamily:'inherit',background:'#fff',outline:'none',width:'100%',color:'#0F172A'}}/>
+      </div>
+      {q&&<span style={{fontSize:12,color:'#94A3B8',whiteSpace:'nowrap'}}>{bySearch.length} resultado{bySearch.length!==1?'s':''}</span>}
+    </div>
+    {displayed.length===0
+      ? <Empty icon="calendar" title="Sin eventos en esta categoría" subtitle="Prueba otro filtro o crea un evento nuevo"/>
+      : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(310px,1fr))',gap:16}}>
+          {displayed.map(e=>{
+            const ep=e.estadoPublicacion||'Abierto';
+            return <div key={e.id} style={{display:'flex',flexDirection:'column',gap:6}}>
+              <EventCard event={e} onClick={()=>navigate('a-evento',e.id)}
+                showPubState={true}
+                actionLabel={isToday(e.fecha)?'Registrar asistencia':'Ver detalles'}
+                actionVariant={isToday(e.fecha)?'accent':'secondary'}
+                onAction={()=>navigate('a-evento',e.id)}/>
+              {/* Botones de cambio rápido de estado de publicación */}
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {ep!=='Borrador'  && <button onClick={()=>{DB.setEstadoPublicacion(e.id,'Borrador');  GS.updateEvento&&getSPConfig().gsUrl&&GS.updateEvento({...e,estadoPublicacion:'Borrador'}).catch(()=>{}); setTick(t=>t+1);}} style={{flex:1,fontSize:11,fontWeight:600,padding:'5px 8px',borderRadius:6,cursor:'pointer',border:'1px solid #E2E8F0',background:'#F8FAFC',color:'#64748B',fontFamily:'inherit'}}>→ Borrador</button>}
+                {ep!=='Publicado' && <button onClick={()=>{DB.setEstadoPublicacion(e.id,'Publicado'); getSPConfig().gsUrl&&GS.updateEvento({...e,estadoPublicacion:'Publicado'}).catch(()=>{}); setTick(t=>t+1);}} style={{flex:1,fontSize:11,fontWeight:600,padding:'5px 8px',borderRadius:6,cursor:'pointer',border:'1px solid #BFDBFE',background:'#EFF6FF',color:'#1D4ED8',fontFamily:'inherit'}}>→ Publicado</button>}
+                {ep!=='Abierto'   && <button onClick={()=>{DB.setEstadoPublicacion(e.id,'Abierto');   getSPConfig().gsUrl&&GS.updateEvento({...e,estadoPublicacion:'Abierto'}).catch(()=>{}); setTick(t=>t+1);}} style={{flex:1,fontSize:11,fontWeight:600,padding:'5px 8px',borderRadius:6,cursor:'pointer',border:'1px solid #BBF7D0',background:'#F0FDF4',color:'#15803D',fontFamily:'inherit'}}>→ Abierto</button>}
+              </div>
+            </div>;
+          })}
+        </div>}
+    {pastHidden>0&&<div style={{textAlign:'center',marginTop:20}}>
+      <button onClick={()=>setShowAllPast(true)} style={{background:'none',border:'1px solid #E2E8F0',
+        borderRadius:8,padding:'8px 20px',cursor:'pointer',fontFamily:'inherit',fontSize:13,
+        color:'#64748B',fontWeight:500}}>
+        Ver {pastHidden} actividad{pastHidden!==1?'es':''} pasada{pastHidden!==1?'s':''} más
+      </button>
+    </div>}
+    <EventFormModal open={showForm} onClose={()=>setShowForm(false)}
+      onSave={()=>{setTick(t=>t+1);setShowForm(false);}}/>
+  </div>;
+}
+
+function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
+  const [tab,setTab]=useState(initTab||'inscritos');
+  const [checkinRut,setCheckinRut]=useState('');
+  const [checkinMsg,setCheckinMsg]=useState(null);
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [showEdit,setShowEdit]=useState(false);
+  const event=DB.event(eventId);
+  if(!event) return <Empty icon="calendar" title="Evento no encontrado"/>;
+  const now=useNow();
+  const regs=DB.eventRegs(eventId),atts=DB.eventAtts(eventId);
+  const canCheck=isPast(event.fecha)||isToday(event.fecha);
+
+  async function handleCheckin() {
+    const rut=checkinRut.trim();if(!rut)return;
+    const cfg=getSPConfig();
+    const teacher=DB.findTeacher(rut),isReg=DB.isReg(eventId,rut),hasAtt=DB.hasAtt(eventId,rut);
+    if(hasAtt){setCheckinMsg({type:'warning',text:'Ya tiene asistencia registrada.',teacher});return;}
+    if(!isReg){setCheckinMsg({type:'danger',text:'No está inscrito en este evento.',teacher});return;}
+    if(cfg.mode==='googlesheets') {
+      await GS.addAsistencia({id:'a-'+Date.now(),eid:eventId,rut});
+      GS.addLog('checkin_admin', 'Admin', eventId, `Check-in: ${teacher?.nombre||rut} en "${event.nombre}"`).catch(()=>{});
+    }
+    DB.markAtt(eventId,rut);setTick(t=>t+1);
+    setCheckinMsg({type:'success',text:'¡Asistencia registrada!',teacher:teacher||{nombre:rut,especialidad:''}});
+    setCheckinRut('');
+  }
+
+  async function handleDelete() {
+    const cfg=getSPConfig();
+    if(cfg.mode==='googlesheets') await GS.deleteEvento(eventId);
+    DB.deleteEvent(eventId);setTick(t=>t+1);navigate('a-eventos');
+  }
+
+  function exportAsistencia() {
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const inscritos = regs.map(r => {
+      const t = DB.findTeacher(r.rut)||{nombre:r.rut,especialidad:'—',email:'—'};
+      const asistio = DB.hasAtt(eventId,r.rut);
+      return `<tr>
+        <td style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-weight:600">${esc(t.nombre)}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #F1F5F9;color:#64748B">${esc(t.especialidad)}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #F1F5F9;color:#64748B">${esc(t.email)}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #F1F5F9;text-align:center;font-weight:700;color:${asistio?'#15803D':'#94A3B8'}">${asistio?'✓ Asistió':'—'}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #F1F5F9"></td>
+      </tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+      <title>Asistencia — ${esc(event.nombre)}</title>
+      <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#0F172A;padding:36px;font-size:13px}
+      .header{border-bottom:3px solid #1E3A8A;padding-bottom:18px;margin-bottom:24px}
+      h1{font-size:20px;font-weight:800;color:#1E3A8A;margin-bottom:6px}
+      .meta{display:flex;gap:24px;font-size:12px;color:#64748B;margin-bottom:16px}
+      .stats{display:flex;gap:12px;margin-bottom:24px}
+      .stat{background:#F8FAFC;border-radius:8px;padding:12px 18px;flex:1;text-align:center}
+      .stat-n{font-size:22px;font-weight:800;color:#1E3A8A}.stat-l{font-size:11px;color:#64748B}
+      table{width:100%;border-collapse:collapse}
+      th{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase}
+      .footer{margin-top:28px;font-size:11px;color:#94A3B8;display:flex;justify-content:space-between;border-top:1px solid #E2E8F0;padding-top:12px}
+      @media print{body{padding:18px}@page{margin:12mm}}</style></head>
+      <body>
+      <div class="header">
+        <div style="font-size:11px;font-weight:700;color:#94A3B8;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Lista de Asistencia</div>
+        <h1>${esc(event.nombre)}</h1>
+      </div>
+      <div class="meta">
+        <span>📅 ${esc(fmtDateL(event.fecha))} · ${esc(fmtHora(event.hora))}h</span>
+        <span>📍 ${esc(event.lugar)}</span>
+        <span>👤 ${esc(event.relator)}</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-n">${regs.length}</div><div class="stat-l">Inscritos</div></div>
+        <div class="stat"><div class="stat-n">${atts.length}</div><div class="stat-l">Asistencias</div></div>
+        <div class="stat"><div class="stat-n">${regs.length>0?Math.round(atts.length/regs.length*100):0}%</div><div class="stat-l">Tasa</div></div>
+        <div class="stat"><div class="stat-n">${event.cupos-regs.length}</div><div class="stat-l">Cupos libres</div></div>
+      </div>
+      <table><thead><tr><th>Nombre</th><th>Decanato / Área</th><th>Correo</th><th style="text-align:center">Asistencia</th><th>Firma</th></tr></thead>
+      <tbody>${inscritos}</tbody></table>
+      <div class="footer"><span>Generada el ${esc(fmtDateL(TODAY))}</span><span>Sistema de Capacitaciones Docentes</span></div>
+      ${'<scr'+'ipt>'}window.onload=function(){setTimeout(function(){window.print();},400);}${'</scr'+'ipt>'}
+      </body></html>`;
+    const win = window.open('','_blank');
+    if(!win){ alert('El navegador bloqueó la ventana. Permite ventanas emergentes e intenta de nuevo.'); return; }
+    win.document.open(); win.document.write(html); win.document.close();
+  }
+
+  const tabList=[{id:'inscritos',label:`Inscritos (${regs.length})`},{id:'asistencia',label:`Asistencia (${atts.length})`},
+    ...(canCheck&&!isClosed?[{id:'checkin',label:'Check-in kiosco'}]:[]),
+    {id:'exportar',label:'Exportar'}];  const msgC={success:['#DCFCE7','#15803D'],warning:['#FEF3C7','#B45309'],danger:['#FEE2E2','#B91C1C']};
+
+  const isClosed = DB.isClosed(eventId);
+
+  return <div className="fade-in">
+    <PageHeader back="Volver a Eventos" onBack={()=>navigate('a-eventos')} title={event.nombre}
+      subtitle={`${fmtDateL(event.fecha)} · ${fmtHora(event.hora)}h · ${event.lugar}`}
+      action={<div style={{display:'flex',gap:8}}>
+        {canCheck&&!isClosed&&<Btn variant="accent" onClick={()=>setTab('checkin')}><Icon name="checkc" size={15}/>Check-in</Btn>}
+        {canCheck&&!isClosed&&<Btn variant="secondary" onClick={async()=>{
+          // Marcar como "no asistió" a todos los inscritos sin asistencia
+          const cfg=getSPConfig();
+          const pendientes=DB.eventRegs(eventId).filter(r=>!DB.hasAtt(eventId,r.rut));
+          pendientes.forEach(r=>{
+            DB.markAtt(eventId,r.rut,true); // true = no_asistio
+            if(cfg.mode==='googlesheets')
+              GS.addAsistencia({id:'na-'+Date.now()+'-'+r.rut,eid:eventId,rut:r.rut,tipo:'no_asistio'}).catch(()=>{});
+          });
+          DB.closeEvent(eventId); setTick(t=>t+1);
+        }}>
+          <Icon name="checkc" size={15}/>Finalizar evento
+        </Btn>}
+        {isClosed&&<Btn variant="ghost" size="sm" onClick={()=>{DB.reopenEvent(eventId);setTick(t=>t+1);}}>
+          Reabrir
+        </Btn>}
+        <Btn variant="ghost" size="sm" onClick={()=>setShowEdit(true)}><Icon name="edit" size={14}/>Editar</Btn>
+        <Btn variant="danger" size="sm" onClick={()=>setConfirmDel(true)}><Icon name="trash" size={14}/></Btn>
+      </div>}/>
+    <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+      <Badge text={event.tipo}/>{isToday(event.fecha)&&<Badge text="Hoy" variant="warning"/>}
+      {isClosed&&<Badge text="Finalizado" variant="success"/>}
+      {!isClosed&&isPast(event.fecha)&&<Badge text="Realizado" variant="success"/>}
+      {(event.estadoPublicacion||'Abierto')==='Borrador'  && <Badge text="Borrador"  variant="neutral"/>}
+      {(event.estadoPublicacion||'Abierto')==='Publicado' && <Badge text="Publicado" variant="info"/>}
+      {(event.estadoPublicacion||'Abierto')==='Abierto'   && <Badge text="Abierto"   variant="success"/>}
+      <span style={{fontSize:13,color:'#64748B'}}>Relator: <strong>{event.relator}</strong></span>
+      <span style={{fontSize:13,color:'#64748B'}}>Cupos: {regs.length}/{event.cupos}</span>
+    </div>
+    {/* Control rápido de estado de publicación */}
+    <Card p={12} style={{marginBottom:16,background:'#F8FAFC',border:'1px solid #E2E8F0',boxShadow:'none'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <span style={{fontSize:12,fontWeight:700,color:'#475569',flexShrink:0}}>Estado de publicación:</span>
+        {['Borrador','Publicado','Abierto'].map(est=>{
+          const actual=event.estadoPublicacion||'Abierto';
+          const colors={Borrador:{bg:'#F1F5F9',bc:'#CBD5E1',tc:'#475569'},Publicado:{bg:'#EFF6FF',bc:'#BFDBFE',tc:'#1D4ED8'},Abierto:{bg:'#F0FDF4',bc:'#BBF7D0',tc:'#15803D'}};
+          const c=colors[est];
+          return <button key={est} onClick={()=>{
+            if(actual===est) return;
+            DB.setEstadoPublicacion(eventId,est);
+            getSPConfig().gsUrl&&GS.updateEvento({...event,estadoPublicacion:est}).catch(()=>{});
+            setTick(t=>t+1);
+          }} style={{fontSize:12,fontWeight:600,padding:'5px 14px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',
+            border:`1.5px solid ${actual===est?c.bc:'#E2E8F0'}`,
+            background:actual===est?c.bg:'transparent',
+            color:actual===est?c.tc:'#94A3B8',
+            transition:'all .12s'}}>
+            {actual===est&&'✓ '}{est}
+          </button>;
+        })}
+        {event.fechaApertura&&<span style={{fontSize:11,color:'#94A3B8',marginLeft:4}}>
+          Apertura programada: {fmtDateL(event.fechaApertura)}
+        </span>}
+      </div>
+    </Card>
+    {event.descripcion&&<Card p={14} style={{marginBottom:20,background:'#F8FAFC',border:'none',boxShadow:'none'}}>
+      <p style={{fontSize:14,color:'#475569',lineHeight:1.65}}>{event.descripcion}</p>
+    </Card>}
+    <Tabs tabs={tabList} active={tab} onChange={setTab}/>
+    {tab==='inscritos'&&<Card p={0}>
+      <Table cols={['Docente','Decanato / Área','Correo','Inscripción','Estado']}
+        empty={<Empty icon="users" title="Sin inscritos"/>}
+        rows={regs.map(r=>{const t=DB.findTeacher(r.rut)||{nombre:r.rut,especialidad:'—',email:'—'};const att=DB.hasAtt(eventId,r.rut);return(
+          <tr key={r.id} onMouseEnter={ev=>ev.currentTarget.style.background='#F8FAFC'} onMouseLeave={ev=>ev.currentTarget.style.background=''}>
+            <Td><div style={{fontWeight:600,color:'#0F172A'}}>{t.nombre}</div><div style={{fontSize:12,color:'#94A3B8'}}>{r.rut}</div></Td>
+            <Td>{t.especialidad}</Td><Td>{t.email}</Td><Td>{fmtDate(r.fecha)}</Td>
+            <Td>{att?<Badge text="Asistió" variant="success"/>:isClosed?<Badge text="No asistió" variant="danger"/>:<Badge text="Inscrito" variant="info"/>}</Td>
+          </tr>);})}/>
+    </Card>}
+    {tab==='asistencia'&&<Card p={0}>
+      <Table cols={['Docente','Decanato / Área','Correo','Fecha asistencia']}
+        empty={<Empty icon="checkc" title="Sin asistencias" subtitle={canCheck?'Usa el tab Check-in':'El evento aún no ha ocurrido'}/>}
+        rows={atts.map(a=>{const t=DB.findTeacher(a.rut)||{nombre:a.rut,especialidad:'—',email:'—'};return(
+          <tr key={a.id} onMouseEnter={ev=>ev.currentTarget.style.background='#F8FAFC'} onMouseLeave={ev=>ev.currentTarget.style.background=''}>
+            <Td><div style={{fontWeight:600,color:'#0F172A'}}>{t.nombre}</div><div style={{fontSize:12,color:'#94A3B8'}}>{a.rut}</div></Td>
+            <Td>{t.especialidad}</Td><Td>{t.email}</Td><Td>{fmtDate(a.fecha)}</Td>
+          </tr>);})}/>
+    </Card>}
+    {tab==='checkin'&&(()=>{
+      const [checkinMode,setCheckinMode]=React.useState('rut'); // 'rut' | 'lista'
+      const sortedRegs=[...regs].sort((a,b)=>{
+        const na=(DB.findTeacher(a.rut)||{}).nombre||a.rut;
+        const nb=(DB.findTeacher(b.rut)||{}).nombre||b.rut;
+        return na.localeCompare(nb,'es');
+      });
+
+      async function marcarDesdeListaRut(rut) {
+        const cfg=getSPConfig();
+        const teacher=DB.findTeacher(rut);
+        if(DB.hasAtt(eventId,rut)) return;
+        if(cfg.mode==='googlesheets') {
+          await GS.addAsistencia({id:'a-'+Date.now(),eid:eventId,rut});
+          GS.addLog('checkin_lista','Admin',eventId,`Lista: ${teacher?.nombre||rut}`).catch(()=>{});
+        }
+        DB.markAtt(eventId,rut); setTick(t=>t+1);
+      }
+
+      return <div>
+        {/* Toggle modo */}
+        <div style={{display:'flex',gap:8,marginBottom:20,justifyContent:'center'}}>
+          {[['rut','Por RUT'],['lista','Lista de inscritos']].map(([m,l])=>(
+            <button key={m} onClick={()=>setCheckinMode(m)} style={{padding:'8px 20px',borderRadius:8,
+              fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .12s',
+              border:'1.5px solid',
+              borderColor:checkinMode===m?'#0D9488':'#E2E8F0',
+              background:checkinMode===m?'#0D9488':'#fff',
+              color:checkinMode===m?'#fff':'#64748B'}}>{l}
+            </button>
+          ))}
+        </div>
+
+        {checkinMode==='rut'&&<div style={{display:'flex',justifyContent:'center'}}>
+          <Card p={32} style={{maxWidth:460,width:'100%',textAlign:'center'}}>
+            <h3 style={{fontSize:17,fontWeight:800,marginBottom:4}}>Registro rápido por RUT</h3>
+            <p style={{fontSize:13,color:'#64748B',marginBottom:20,lineHeight:1.5}}>
+              {event.nombre} · <span style={{color:'#94A3B8'}}>{fmtDateL(event.fecha)}</span>
+            </p>
+            <div style={{display:'flex',gap:10,marginBottom:checkinMsg?16:0}}>
+              <TInput value={checkinRut} onChange={e=>setCheckinRut(e.target.value)}
+                onBlur={()=>{if(checkinRut.trim()&&!checkinRut.includes('@'))setCheckinRut(formatRut(checkinRut.trim()));}}
+                placeholder="12.345.678-9" autoFocus
+                onKeyDown={e=>e.key==='Enter'&&handleCheckin()} style={{fontSize:16,padding:'12px 14px'}}/>
+              <Btn onClick={handleCheckin} variant="accent" size="lg">✓</Btn>
+            </div>
+            {checkinMsg&&<div className="fade-in" style={{padding:'12px 16px',borderRadius:10,textAlign:'left',
+              background:msgC[checkinMsg.type][0],color:msgC[checkinMsg.type][1],marginBottom:4}}>
+              <div style={{fontWeight:700}}>{checkinMsg.type==='success'?'✓ ':checkinMsg.type==='warning'?'⚠ ':'✕ '}{checkinMsg.text}</div>
+              {checkinMsg.teacher&&<div style={{fontSize:13,opacity:.8,marginTop:2}}>{checkinMsg.teacher.nombre}</div>}
+              <button onClick={()=>setCheckinMsg(null)} style={{fontSize:11,opacity:.6,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',color:'inherit',marginTop:4,padding:0}}>Cerrar</button>
+            </div>}
+            <div style={{display:'flex',marginTop:20,borderTop:'1px solid #F1F5F9',paddingTop:16}}>
+              {[{v:regs.length,l:'Inscritos',c:'#1E3A8A'},{v:atts.length,l:'Asistencias',c:'#15803D'},{v:regs.length-atts.length,l:'Pendientes',c:'#B45309'}]
+                .map((s,i)=><div key={i} style={{flex:1,textAlign:'center',borderRight:i<2?'1px solid #F1F5F9':'none'}}>
+                  <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
+                  <div style={{fontSize:11,color:'#94A3B8',marginTop:2}}>{s.l}</div>
+                </div>)}
+            </div>
+          </Card>
+        </div>}
+
+        {checkinMode==='lista'&&<Card p={0}>
+          <div style={{padding:'14px 20px',borderBottom:'1px solid #F1F5F9',display:'flex',
+            alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{fontSize:14,fontWeight:700}}>
+              {atts.length}/{regs.length} asistencias registradas
+            </div>
+            <div style={{fontSize:12,color:'#94A3B8'}}>
+              Toca "Marcar" para registrar asistencia
+            </div>
+          </div>
+          {sortedRegs.length===0
+            ? <Empty icon="users" title="Sin inscritos"/>
+            : <div>{sortedRegs.map(r=>{
+                const t=DB.findTeacher(r.rut)||{nombre:r.rut,especialidad:'—'};
+                const attended=DB.hasAtt(eventId,r.rut);
+                return <div key={r.id} style={{display:'flex',alignItems:'center',gap:14,padding:'12px 20px',
+                  borderBottom:'1px solid #F8FAFC',background:attended?'#F0FDF4':'#fff',
+                  transition:'background .15s'}}>
+                  <div style={{width:36,height:36,borderRadius:10,flexShrink:0,
+                    background:attended?'#DCFCE7':'#F1F5F9',
+                    display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    {attended
+                      ? <Icon name="check" size={18} color="#15803D"/>
+                      : <Icon name="person" size={18} color="#CBD5E1"/>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:600,color:'#0F172A',whiteSpace:'nowrap',
+                      overflow:'hidden',textOverflow:'ellipsis'}}>{t.nombre}</div>
+                    <div style={{fontSize:12,color:'#94A3B8'}}>{t.especialidad}</div>
+                  </div>
+                  {attended
+                    ? <span style={{fontSize:12,fontWeight:600,color:'#15803D',
+                        background:'#DCFCE7',padding:'4px 10px',borderRadius:6}}>✓ Asistió</span>
+                    : <Btn size="sm" variant="accent"
+                        onClick={()=>marcarDesdeListaRut(r.rut)}>
+                        Marcar
+                      </Btn>}
+                </div>;
+              })}</div>
+          }
+        </Card>}
+      </div>;
+    })()}
+    {tab==='exportar'&&<Card p={0}>
+      <div style={{padding:28,display:'flex',flexDirection:'column',gap:16,alignItems:'flex-start'}}>
+        <div>
+          <h3 style={{fontSize:15,fontWeight:700,marginBottom:6}}>Lista de asistencia</h3>
+          <p style={{fontSize:13,color:'#64748B',lineHeight:1.6,maxWidth:440}}>
+            Genera un documento imprimible con todos los inscritos, columna de asistencia marcada y espacio para firma manual. Ideal para archivar o presentar a la dirección.
+          </p>
+        </div>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+          <Btn onClick={exportAsistencia} variant="primary">
+            <Icon name="clip" size={15}/>Exportar lista de asistencia (PDF)
+          </Btn>
+        </div>
+        <div style={{background:'#F8FAFC',border:'1px solid #E2E8F0',borderRadius:10,padding:'14px 18px',fontSize:12,color:'#64748B',lineHeight:1.7,width:'100%'}}>
+          <div style={{fontWeight:700,marginBottom:6,color:'#475569'}}>El documento incluye:</div>
+          <div>• Nombre, decanato y correo de cada inscrito</div>
+          <div>• Estado de asistencia marcado automáticamente</div>
+          <div>• Columna de firma para registro físico</div>
+          <div>• Resumen estadístico (inscritos, asistencias, tasa)</div>
+        </div>
+      </div>
+    </Card>}
+    <Modal open={confirmDel} onClose={()=>setConfirmDel(false)} title="Eliminar evento" width={420}>
+      <div style={{display:'flex',gap:14,marginBottom:20}}>
+        <div style={{color:'#B91C1C',flexShrink:0,paddingTop:2}}><Icon name="warn" size={22}/></div>
+        <p style={{fontSize:14,color:'#475569',lineHeight:1.6}}>¿Seguro que deseas eliminar <strong>{event.nombre}</strong>? Se perderán todas las inscripciones y asistencias asociadas.</p>
+      </div>
+      <div style={{display:'flex',justifyContent:'flex-end',gap:10}}>
+        <Btn variant="ghost" onClick={()=>setConfirmDel(false)}>Cancelar</Btn>
+        <Btn variant="danger" onClick={handleDelete}><Icon name="trash" size={14}/>Eliminar</Btn>
+      </div>
+    </Modal>
+    <EventEditModal open={showEdit} onClose={()=>setShowEdit(false)} event={event}
+      onSave={()=>{setTick(t=>t+1);setShowEdit(false);}}/>
+  </div>;
+}
+
+function AdminDocentes({navigate,tick,setTick}) {
+  const [q,setQ]=useState('');
+  const [statusFilter,setStatusFilter]=useState('todos');
+  const teachers=DB.teachers();
+  const pendingCount = teachers.filter(t=>(t.estado||'activo')==='pendiente').length;
+  const filtered=teachers
+    .filter(t=>statusFilter==='pendiente'?(t.estado||'activo')==='pendiente':statusFilter==='activo'?(t.estado||'activo')==='activo':true)
+    .filter(t=>!q||t.nombre.toLowerCase().includes(q.toLowerCase())||t.rut.includes(q)||(t.especialidad||'').toLowerCase().includes(q.toLowerCase()));
+
+  async function aprobar(rut) {
+    const t = DB.findTeacher(rut);
+    if(!t) return;
+    const updated = {...t, estado:'activo'};
+    // Guardar en localStorage correctamente
+    const lista = DB.teachers().map(x => DB.sameRut(x.rut, rut) ? updated : x);
+    localStorage.setItem('cap_teachers', JSON.stringify(lista));
+    // Sincronizar a GS
+    const cfg = getSPConfig();
+    if(cfg.mode==='googlesheets') GS.updateDocente(updated).catch(()=>{});
+    // Forzar re-render del componente
+    if(setTick) setTick(t=>t+1);
+  }
+
+  return <div className="fade-in">
+    <PageHeader title="Docentes" subtitle={`${teachers.length} docentes en el sistema`}/>
+    {pendingCount>0&&<div style={{background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:10,
+      padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10,fontSize:13,color:'#92400E'}}>
+      <Icon name="warn" size={16}/>
+      <span><strong>{pendingCount}</strong> docente{pendingCount!==1?'s':''} pendiente{pendingCount!==1?'s':''} de aprobación</span>
+      <button onClick={()=>setStatusFilter('pendiente')} style={{marginLeft:'auto',background:'#F97316',color:'#fff',
+        border:'none',borderRadius:6,padding:'4px 12px',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+        Ver pendientes
+      </button>
+    </div>}
+    <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+      {[['todos','Todos'],['activo','Activos'],['pendiente','Pendientes']].map(([v,l])=>(
+        <button key={v} onClick={()=>setStatusFilter(v)} style={{padding:'6px 14px',borderRadius:20,fontSize:13,
+          fontWeight:500,cursor:'pointer',fontFamily:'inherit',border:`1px solid ${statusFilter===v?'#1E3A8A':'#E2E8F0'}`,
+          background:statusFilter===v?'#1E3A8A':'#fff',color:statusFilter===v?'#fff':'#64748B',transition:'all .12s'}}>
+          {l}{v==='pendiente'&&pendingCount>0?` (${pendingCount})`:''}
+        </button>
+      ))}
+      <div style={{position:'relative',flex:1,maxWidth:340,marginLeft:'auto'}}>
+        <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'#94A3B8',pointerEvents:'none'}}><Icon name="search" size={15}/></div>
+        <TInput value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nombre, RUT o área…" style={{paddingLeft:38}}/>
+      </div>
+    </div>
+    <Card p={0}>
+      <Table cols={['Docente','RUT','Decanato / Área','Inscrip.','Asist.','Estado','']}
+        empty={<Empty icon="users" title="Sin resultados" subtitle="Ajusta tu búsqueda"/>}
+        rows={filtered.map(t=>{
+          const regs=DB.teacherRegs(t.rut).length,atts=DB.teacherAtts(t.rut).length;
+          const isPending=(t.estado||'activo')==='pendiente';
+          return <tr key={t.rut} onMouseEnter={ev=>ev.currentTarget.style.background='#F8FAFC'} onMouseLeave={ev=>ev.currentTarget.style.background=''}>
+            <Td><span style={{fontWeight:600,color:'#0F172A'}}>{t.nombre}</span></Td>
+            <Td mono>{t.rut}</Td>
+            <Td>{t.especialidad}</Td>
+            <Td><span style={{fontWeight:600,color:'#1E3A8A'}}>{regs}</span></Td>
+            <Td><span style={{fontWeight:600,color:atts>0?'#15803D':'#94A3B8'}}>{atts}</span></Td>
+            <Td><Badge text={isPending?'Pendiente':'Activo'} variant={isPending?'warning':'success'}/></Td>
+            <td style={{padding:'8px 16px',borderBottom:'1px solid #F8FAFC'}}>
+              <div style={{display:'flex',gap:6}}>
+                <Btn size="sm" variant="ghost" onClick={()=>navigate('a-docente',t.rut)}><Icon name="eye" size={14}/>Ver</Btn>
+                {isPending&&<Btn size="sm" variant="accent" onClick={()=>aprobar(t.rut)}><Icon name="check" size={14}/>Aprobar</Btn>}
+              </div>
+            </td>
+          </tr>;})}/>
+    </Card>
+  </div>;
+}
+
+function AdminDocenteDetail({rut,navigate,tick}) {
+  const teacher=DB.findTeacher(rut);
+  if(!teacher) return <Empty icon="person" title="Docente no encontrado"/>;
+  const regs=DB.teacherRegs(rut),atts=DB.teacherAtts(rut),events=DB.events();
+  const history=regs.map(r=>{const ev=events.find(e=>e.id===r.eid);const att=DB.hasAtt(r.eid,rut);return ev?{...ev,reg:r,att}:null;}).filter(Boolean).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const tasa=regs.length?Math.round(atts.length/regs.length*100):null;
+  return <div className="fade-in">
+    <PageHeader back="Volver a Docentes" onBack={()=>navigate('a-docentes')} title={teacher.nombre} subtitle={`${teacher.rut} · ${teacher.especialidad}`}/>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:16,marginBottom:24}}>
+      <StatCard label="Actividades inscritas" value={regs.length} icon="calendar" color="#1E3A8A"/>
+      <StatCard label="Asistencias"           value={atts.length} icon="checkc"   color="#15803D"/>
+      <StatCard label="Tasa de asistencia"    value={tasa!==null?tasa+'%':'—'} icon="star" color="#0D9488"/>
+    </div>
+    <div style={{display:'flex',gap:14,marginBottom:24,flexWrap:'wrap'}}>
+      {[['CORREO',teacher.email],['DECANATO / ÁREA',teacher.especialidad]].map(([lbl,val])=>(
+        <Card key={lbl} p={14} style={{flex:'1 1 200px'}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#94A3B8',letterSpacing:.5,textTransform:'uppercase',marginBottom:4}}>{lbl}</div>
+          <div style={{fontSize:14,color:'#0F172A'}}>{val}</div>
+        </Card>))}
+    </div>
+    <h2 style={{fontSize:15,fontWeight:700,marginBottom:12}}>Historial de actividades</h2>
+    <Card p={0}>
+      <Table cols={['Evento','Tipo','Fecha','Lugar','Estado']} empty={<Empty icon="calendar" title="Sin actividades registradas"/>}
+        rows={history.map(e=><tr key={e.id} onMouseEnter={ev=>ev.currentTarget.style.background='#F8FAFC'} onMouseLeave={ev=>ev.currentTarget.style.background=''}>
+          <Td><span style={{fontWeight:600,color:'#0F172A'}}>{e.nombre}</span></Td>
+          <Td><Badge text={e.tipo}/></Td><Td>{fmtDate(e.fecha)}</Td><Td>{e.lugar}</Td>
+          <Td>{e.att?<Badge text="Asistió" variant="success"/>:DB.hasNoAtt(e.id,rut)?<Badge text="No asistió" variant="danger"/>:isUpcoming(e.fecha)?<Badge text="Inscrito" variant="info"/>:<Badge text="No asistió" variant="danger"/>}</Td>
+        </tr>)}/>
+    </Card>
+  </div>;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   DOCENTE VIEWS
+   ════════════════════════════════════════════════════════════════ */
+function DocenteEventos({rut,tick,setTick}) {
+  const [filter,setFilter]=useState('all');
+  const [showForm,setShowForm]=useState(null);
+  const [regForm,setRegForm]=useState({nombre:'',email:'',especialidad:''});
+  const teacher=DB.findTeacher(rut),events=DB.events();
+  const sysConfig   = getSysConfig();
+  const MAX_POR_DIA = parseInt(sysConfig.max_inscripciones_dia||'3', 10);
+  const AVISO_CUPOS = parseInt(sysConfig.aviso_cupos_bajos||'20', 10) / 100;
+
+  // Docentes nunca ven Borradores
+  const visibles = events.filter(e => (e.estadoPublicacion||'Abierto') !== 'Borrador');
+  const filtered = visibles
+    .filter(e=>filter==='today'?isToday(e.fecha):filter==='upcoming'?isUpcoming(e.fecha)&&!isToday(e.fecha):true)
+    .sort((a,b)=>a.fecha.localeCompare(b.fecha));
+
+  // Inscripciones del docente agrupadas por fecha
+  const regsByDate = {};
+  DB.teacherRegs(rut).forEach(r => {
+    const ev = events.find(e=>e.id===r.eid);
+    if(ev&&ev.fecha) regsByDate[ev.fecha] = (regsByDate[ev.fecha]||0) + 1;
+  });
+
+  async function tryRegister(event) {
+    if((event.estadoPublicacion||'Abierto') !== 'Abierto') return;
+    const lockKey = 'reg_lock_' + event.id + '_' + rut;
+    if(sessionStorage.getItem(lockKey)) return;
+    if(DB.isReg(event.id,rut)) return;
+    if(DB.eventRegs(event.id).length >= event.cupos) return;
+    if((regsByDate[event.fecha]||0) >= MAX_POR_DIA) {
+      alert(`Ya tienes ${MAX_POR_DIA} inscripción${MAX_POR_DIA!==1?'es':''} para el ${fmtDateL(event.fecha)}. No puedes inscribirte en más eventos ese día.`);
+      return;
+    }
+    sessionStorage.setItem(lockKey, '1');
+    try {
+      if(DB.eventRegs(event.id).length >= event.cupos) { setTick(t=>t+1); return; }
+      const cfg=getSPConfig();
+      if(teacher) {
+        if(cfg.mode==='googlesheets') {
+          const regId = 'r-' + Date.now();
+          // GS.inscribir usa LockService en el servidor y devuelve respuesta confirmada
+          const result = await GS.inscribir(event.id, rut, regId);
+          if(result.ok === false) {
+            // Respuesta definitiva del servidor: no registrar localmente
+            if(result.error === 'sin_cupos') {
+              setTick(t=>t+1); // refresca UI para reflejar cupos reales
+              alert('Lo sentimos, el evento ya no tiene cupos disponibles.');
+              return;
+            }
+            if(result.error === 'ya_inscrito') {
+              // El servidor ya lo tiene; sincronizar localmente y salir
+              DB.register(event.id, rut); setTick(t=>t+1); return;
+            }
+            // lock_timeout u otro error de servidor: registrar localmente (optimista)
+          }
+          // ok:true → confirmado | ok:null → fallback CORS → optimista
+          GS.addLog('inscripcion', rut, event.id,
+            `${teacher.nombre||rut} se inscribió en "${event.nombre}"`).catch(()=>{});
+        }
+        DB.register(event.id,rut); setTick(t=>t+1);
+      } else { setRegForm({nombre:'',email:'',especialidad:''}); setShowForm(event); }
+    } finally { sessionStorage.removeItem(lockKey); }
+  }
+
+  async function confirmRegister() {
+    if(!showForm) return;
+    const lockKey = 'reg_lock_' + showForm.id + '_' + rut;
+    if(sessionStorage.getItem(lockKey)) return;
+    if(DB.eventRegs(showForm.id).length >= showForm.cupos) {
+      setShowForm(null); alert('Lo sentimos, el evento se llenó mientras completabas el formulario.'); return;
+    }
+    sessionStorage.setItem(lockKey, '1');
+    try {
+      if(DB.eventRegs(showForm.id).length >= showForm.cupos) {
+        setShowForm(null); alert('Lo sentimos, el evento se llenó mientras completabas el formulario.'); return;
+      }
+      const cfg=getSPConfig();
+      if(!DB.findTeacher(rut)) {
+        if(cfg.mode==='googlesheets') await GS.addDocente({rut,...regForm});
+        DB.addTeacher({rut,...regForm});
+      }
+      if(cfg.mode==='googlesheets') {
+        const regId = 'r-' + Date.now();
+        const result = await GS.inscribir(showForm.id, rut, regId);
+        if(result.ok === false) {
+          if(result.error === 'sin_cupos') {
+            setShowForm(null); setTick(t=>t+1);
+            alert('Lo sentimos, el evento ya no tiene cupos disponibles.');
+            return;
+          }
+          // ya_inscrito u otros: sincronizar localmente
+        }
+        GS.addLog('inscripcion', rut, showForm.id,
+          `${regForm.nombre||rut} se inscribió en "${showForm.nombre}" (nuevo docente)`).catch(()=>{});
+      }
+      DB.register(showForm.id,rut); setTick(t=>t+1); setShowForm(null);
+    } finally { sessionStorage.removeItem(lockKey); }
+  }
+
+  return <div className="fade-in">
+    <PageHeader title="Eventos disponibles" subtitle="Inscríbete a las capacitaciones abiertas"/>
+    <FilterPills value={filter} onChange={setFilter} options={[['upcoming','Próximos'],['today','Hoy'],['all','Todos']]}/>
+    {filtered.length===0
+      ? <Empty icon="calendar" title="Sin eventos en esta categoría" subtitle="Revisa otro filtro o vuelve más tarde"/>
+      : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(310px,1fr))',gap:16}}>
+          {filtered.map(e=>{
+            const ep         = e.estadoPublicacion||'Abierto';
+            const reg        = DB.isReg(e.id,rut);
+            const totalRegs  = DB.eventRegs(e.id).length;
+            const full       = totalRegs >= e.cupos;
+            const pct        = e.cupos > 0 ? totalRegs / e.cupos : 0;
+            const pocosC     = !full && pct >= (1 - AVISO_CUPOS);
+            const restantes  = e.cupos - totalRegs;
+            const miReg      = DB.teacherRegs(rut).find(r=>r.eid===e.id);
+            const modificado = reg && miReg?.registradoAt && e.updatedAt && e.updatedAt > miReg.registradoAt;
+            const limiteAlc  = !reg && (regsByDate[e.fecha]||0) >= MAX_POR_DIA;
+
+            // Publicado — visible en gris
+            if(ep === 'Publicado') return (
+              <div key={e.id} style={{opacity:.7,filter:'grayscale(30%)'}}>
+                <EventCard event={e}
+                  extra={<div style={{display:'flex',alignItems:'center',gap:7,fontSize:12,
+                    color:'#1D4ED8',background:'#EFF6FF',border:'1px solid #BFDBFE',
+                    borderRadius:8,padding:'6px 12px',marginBottom:8,fontWeight:500}}>
+                    <Icon name="calendar" size={13}/>
+                    {e.fechaApertura?`Inscripción disponible desde el ${fmtDateL(e.fechaApertura)}`:'Próximamente — inscripción no disponible aún'}
+                  </div>}
+                  actionLabel="No disponible aún" actionVariant="ghost"
+                  actionDisabled={true} onAction={()=>{}}/>
+              </div>
+            );
+
+            // Abierto — con indicadores de fase 3
+            return <EventCard key={e.id} event={e}
+              actionLabel={reg?'Ya inscrito':full?'Sin cupos':limiteAlc?'Límite del día':'Inscribirme'}
+              actionVariant={reg?'ghost':full||limiteAlc?'secondary':'primary'}
+              actionDisabled={reg||full||limiteAlc}
+              onAction={()=>tryRegister(e)}
+              extra={<div>
+                {reg&&<div style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:12,
+                  color:'#15803D',fontWeight:600,marginBottom:4}}>
+                  <Icon name="check" size={13}/>Ya estás inscrito
+                </div>}
+                {modificado&&<div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,
+                  color:'#92400E',background:'#FEF3C7',border:'1px solid #FDE68A',
+                  borderRadius:8,padding:'6px 10px',marginBottom:4,lineHeight:1.4}}>
+                  <Icon name="warn" size={13}/>Este evento fue modificado después de tu inscripción. Verifica los detalles.
+                </div>}
+                {pocosC&&!reg&&<div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,
+                  color:'#B45309',background:'#FFFBEB',border:'1px solid #FDE68A',
+                  borderRadius:8,padding:'5px 10px',marginBottom:4,fontWeight:500}}>
+                  <Icon name="warn" size={13}/>¡Solo quedan {restantes} cupo{restantes!==1?'s':''}!
+                </div>}
+                {limiteAlc&&<div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,
+                  color:'#64748B',background:'#F1F5F9',border:'1px solid #CBD5E1',
+                  borderRadius:8,padding:'5px 10px',marginBottom:4}}>
+                  <Icon name="calendar" size={13}/>Ya tienes {MAX_POR_DIA} evento{MAX_POR_DIA!==1?'s':''} este día
+                </div>}
+              </div>}/>;
+          })}
+        </div>}
+    <Modal open={!!showForm} onClose={()=>setShowForm(null)} title="Completa tu inscripción">
+      <div style={{background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:8,padding:'10px 14px',marginBottom:20,fontSize:13,color:'#92400E',lineHeight:1.5}}>
+        El RUT <strong>{rut}</strong> no está en el registro. Completa tus datos — se guardarán para futuros eventos.
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <Field label="Nombre completo" required><TInput value={regForm.nombre} onChange={e=>setRegForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre y apellido" autoFocus/></Field>
+        <Field label="Correo electrónico" required><TInput value={regForm.email} onChange={e=>setRegForm(p=>({...p,email:e.target.value}))} type="email" placeholder="correo@ejemplo.cl"/></Field>
+        <Field label="Decanato / Área" required>
+          <SInput value={regForm.especialidad} onChange={e=>setRegForm(p=>({...p,especialidad:e.target.value}))} options={FACULTADES} placeholder="Selecciona…"/>
+        </Field>
+      </div>
+      <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:20}}>
+        <Btn variant="ghost" onClick={()=>setShowForm(null)}>Cancelar</Btn>
+        <Btn onClick={confirmRegister} disabled={!regForm.nombre||!regForm.email||!regForm.especialidad}>Confirmar inscripción</Btn>
+      </div>
+    </Modal>
+  </div>;
+}
+
+function DocenteInscripciones({rut,tick,setTick}) {
+  const regs=DB.teacherRegs(rut),events=DB.events();
+  const items=regs.map(r=>{const ev=events.find(e=>e.id===r.eid);const att=DB.hasAtt(r.eid,rut);return ev?{...ev,reg:r,att}:null;}).filter(Boolean).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const [checkinId,setCheckinId]=React.useState(null);
+  const [checkinOk,setCheckinOk]=React.useState({});
+  const [confirmCancel,setConfirmCancel]=React.useState(null); // eventId a cancelar
+  const nowT=useNow();
+
+  async function cancelar(eventId) {
+    const cfg=getSPConfig();
+    const ev=DB.events().find(e=>e.id===eventId);
+    if(cfg.mode==='googlesheets') {
+      const reg=DB.teacherRegs(rut).find(r=>r.eid===eventId);
+      await GS.cancelInscripcion(eventId,rut,reg&&reg.id,reg&&reg.fecha);
+      GS.addLog('cancelacion', rut, eventId, `${rut} canceló inscripción en "${ev?.nombre||eventId}"`).catch(()=>{});
+    }
+    DB.unregister(eventId,rut);
+    setConfirmCancel(null);
+    setTick(t=>t+1);
+  }
+
+  async function confirmarAsistencia(eventId) {
+    if(DB.hasAtt(eventId,rut)) return;
+    const ev = DB.event(eventId);
+    if(!ev || !isCheckInOpen(ev, new Date())) {
+      alert('La ventana de registro ya cerró. Contacta al administrador si necesitas registrar tu asistencia.');
+      return;
+    }
+    DB.markAtt(eventId,rut);
+    const cfg=getSPConfig();
+    if(cfg.mode==='googlesheets'&&cfg.gsUrl) {
+      try {
+        await GS.addAsistencia({id:'a-'+Date.now(),eid:eventId,rut});
+        const ev2=DB.event(eventId);
+        GS.addLog('asistencia_auto', rut, eventId, `${rut} confirmó asistencia en "${ev2?.nombre||eventId}"`).catch(()=>{});
+      } catch(e){}
+    }
+    setCheckinOk(p=>({...p,[eventId]:true}));
+    setTick(t=>t+1);
+  }
+
+  return <div className="fade-in">
+    <PageHeader title="Mis inscripciones" subtitle={`${regs.length} evento${regs.length!==1?'s':''} inscrito${regs.length!==1?'s':''}`}/>
+    {items.length===0?<Empty icon="calendar" title="Sin inscripciones" subtitle="Ve a Eventos para inscribirte"/>
+      :<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(310px,1fr))',gap:16}}>
+        {items.map(e=>{
+          const showCancel=isUpcoming(e.fecha);
+          const showCheckin=isCheckInOpen(e,nowT)&&!e.att&&!checkinOk[e.id];
+          const justCheckedIn=checkinOk[e.id];
+          return(
+          <EventCard key={e.id} event={e}
+            extra={<div style={{marginBottom:10}}>
+              {(e.att||justCheckedIn)?
+                <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:12,fontWeight:600,color:'#15803D',background:'#DCFCE7',padding:'3px 10px',borderRadius:20}}>
+                  <Icon name="checkc" size={13}/>Asistencia confirmada
+                </span>
+              :showCheckin?
+                <button onClick={()=>confirmarAsistencia(e.id)} style={{
+                  display:'inline-flex',alignItems:'center',gap:6,fontSize:12,fontWeight:700,
+                  color:'#1D4ED8',background:'#EFF6FF',border:'1.5px solid #93C5FD',
+                  padding:'4px 12px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',transition:'all .12s'}}
+                  onMouseOver={ev=>ev.currentTarget.style.background='#DBEAFE'}
+                  onMouseOut={ev=>ev.currentTarget.style.background='#EFF6FF'}>
+                  <Icon name="checkc" size={13}/>Confirmar mi asistencia
+                </button>
+              :isToday(e.fecha)?
+                <span style={{fontSize:12,color:'#B45309',fontWeight:500}}>Fuera de ventana horaria</span>
+              :isUpcoming(e.fecha)?
+                <span style={{fontSize:12,color:'#B45309',fontWeight:500}}>Pendiente de asistencia</span>
+              :<span style={{fontSize:12,color:'#B91C1C',fontWeight:500}}>No se registró asistencia</span>}
+            </div>}
+            actionLabel={showCancel?'Cancelar inscripción':undefined}
+            actionVariant="danger"
+            onAction={showCancel?()=>setConfirmCancel(e.id):undefined}/>);})}
+      </div>}
+    <Modal open={!!confirmCancel} onClose={()=>setConfirmCancel(null)} title="Cancelar inscripción" width={400}>
+      <div style={{display:'flex',gap:14,marginBottom:20}}>
+        <div style={{color:'#B91C1C',flexShrink:0,paddingTop:2}}><Icon name="warn" size={22}/></div>
+        <p style={{fontSize:14,color:'#475569',lineHeight:1.6}}>
+          ¿Seguro que deseas cancelar tu inscripción en <strong>{items.find(e=>e.id===confirmCancel)?.nombre}</strong>?
+          Esta acción no se puede deshacer.
+        </p>
+      </div>
+      <div style={{display:'flex',justifyContent:'flex-end',gap:10}}>
+        <Btn variant="ghost" onClick={()=>setConfirmCancel(null)}>Mantener inscripción</Btn>
+        <Btn variant="danger" onClick={()=>cancelar(confirmCancel)}><Icon name="trash" size={14}/>Sí, cancelar</Btn>
+      </div>
+    </Modal>
+  </div>;
+}
+
+function DocenteFicha({rut}) {
+  const teacher=DB.findTeacher(rut)||{rut,nombre:'Docente',email:'—',especialidad:'—'};
+  const regs=DB.teacherRegs(rut),atts=DB.teacherAtts(rut),events=DB.events();
+  const tasa=regs.length?Math.round(atts.length/regs.length*100):null;
+  const history=regs.map(r=>{const ev=events.find(e=>e.id===r.eid);const att=DB.hasAtt(r.eid,rut);return ev?{...ev,reg:r,att}:null;}).filter(Boolean).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+
+  function exportPDF() {
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const rows = history.map(e => [
+      '<tr><td><strong>'+esc(e.nombre)+'</strong><br/><small>'+esc(e.lugar)+'</small></td>',
+      '<td>'+esc(e.tipo)+'</td>',
+      '<td>'+esc(fmtDateL(e.fecha))+'<br/>'+esc(fmtHora(e.hora))+'h</td>',
+      '<td>'+esc(e.relator)+'</td>',
+      '<td style="color:'+(e.att?'#15803D':'#B91C1C')+';font-weight:700">',
+      (e.att?'Asistió':isUpcoming(e.fecha)?'Inscrito':'No asistió')+'</td></tr>',
+    ].join(''));
+
+    const css = [
+      '*{box-sizing:border-box;margin:0;padding:0}',
+      'body{font-family:Arial,sans-serif;color:#0F172A;padding:40px;font-size:13px}',
+      '.header{border-bottom:3px solid #1E3A8A;padding-bottom:20px;margin-bottom:28px}',
+      'h1{font-size:22px;font-weight:800;color:#1E3A8A}',
+      '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px}',
+      '.info-box{background:#F8FAFC;border-radius:8px;padding:12px 16px}',
+      '.info-label{font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}',
+      '.info-value{font-size:14px;font-weight:500}',
+      '.stats{display:flex;gap:14px;margin-bottom:28px}',
+      '.stat{background:#EFF6FF;border-radius:8px;padding:14px 20px;flex:1;text-align:center}',
+      '.stat-n{font-size:26px;font-weight:800;color:#1E3A8A}',
+      '.stat-l{font-size:11px;color:#64748B;margin-top:2px}',
+      'h2{font-size:14px;font-weight:700;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;color:#475569}',
+      'table{width:100%;border-collapse:collapse}',
+      'th{background:#F1F5F9;padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase}',
+      'td{padding:10px 12px;border-bottom:1px solid #F1F5F9;vertical-align:top}',
+      'small{color:#94A3B8;font-size:11px}',
+      '.footer{margin-top:36px;padding-top:14px;border-top:1px solid #E2E8F0;font-size:11px;color:#94A3B8;display:flex;justify-content:space-between}',
+      '@media print{body{padding:20px}@page{margin:15mm}}',
+    ].join('');
+
+    const body = [
+      '<div class="header">',
+      '<div style="font-size:11px;font-weight:700;color:#94A3B8;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Sistema de Registro de Capacitaciones</div>',
+      '<h1>Ficha de Capacitaciones Docentes</h1></div>',
+      '<div class="info-grid">',
+      '<div class="info-box"><div class="info-label">Nombre</div><div class="info-value">'+esc(teacher.nombre)+'</div></div>',
+      '<div class="info-box"><div class="info-label">RUT</div><div class="info-value">'+esc(teacher.rut)+'</div></div>',
+      '<div class="info-box"><div class="info-label">Correo</div><div class="info-value">'+esc(teacher.email)+'</div></div>',
+      '<div class="info-box"><div class="info-label">Decanato / Área</div><div class="info-value">'+esc(teacher.especialidad)+'</div></div>',
+      '</div>',
+      '<div class="stats">',
+      '<div class="stat"><div class="stat-n">'+regs.length+'</div><div class="stat-l">Actividades inscritas</div></div>',
+      '<div class="stat"><div class="stat-n">'+atts.length+'</div><div class="stat-l">Asistencias confirmadas</div></div>',
+      '<div class="stat"><div class="stat-n">'+(tasa!==null?tasa+'%':'—')+'</div><div class="stat-l">Tasa de asistencia</div></div>',
+      '</div>',
+      '<h2>Historial de actividades</h2>',
+      '<table><thead><tr><th>Actividad</th><th>Tipo</th><th>Fecha</th><th>Relator</th><th>Estado</th></tr></thead>',
+      '<tbody>'+rows.join('')+'</tbody></table>',
+      '<div class="footer"><span>Generada el '+esc(fmtDateL(TODAY))+'</span><span>Sistema de Capacitaciones Docentes</span></div>',
+    ].join('');
+
+    const win = window.open('','_blank');
+    if(!win){ alert('El navegador bloqueó la ventana del PDF. Permite ventanas emergentes para este sitio e intenta de nuevo.'); return; }
+    const doc = win.document;
+    doc.open();
+    doc.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>');
+    doc.write('<title>Ficha — '+esc(teacher.nombre)+'</title>');
+    doc.write('<style>'+css+'</style>');
+    doc.write('</head><body>'+body);
+    doc.write('<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},400);}</'+'script>');
+    doc.write('</body></html>');
+    doc.close();
+  }
+
+  return <div className="fade-in">
+    <PageHeader title="Mi ficha de capacitaciones" subtitle={`${teacher.nombre} · ${teacher.rut}`}
+      action={<Btn onClick={exportPDF} variant="accent"><Icon name="dl" size={16}/>Exportar PDF</Btn>}/>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:16,marginBottom:28}}>
+      <StatCard label="Inscritas"       value={regs.length}                      icon="calendar" color="#1E3A8A"/>
+      <StatCard label="Asistencias"     value={atts.length}                      icon="checkc"   color="#15803D"/>
+      <StatCard label="Tasa asistencia" value={tasa!==null?tasa+'%':'—'}         icon="star"     color="#0D9488"/>
+    </div>
+    <h2 style={{fontSize:15,fontWeight:700,marginBottom:14}}>Historial completo</h2>
+    <Card p={0}>
+      <Table cols={['Actividad','Tipo','Fecha','Relator','Estado']} empty={<Empty icon="calendar" title="Sin actividades"/>}
+        rows={history.map(e=><tr key={e.id} onMouseEnter={ev=>ev.currentTarget.style.background='#F8FAFC'} onMouseLeave={ev=>ev.currentTarget.style.background=''}>
+          <Td><div style={{fontWeight:600,color:'#0F172A'}}>{e.nombre}</div><div style={{fontSize:12,color:'#94A3B8'}}>{e.lugar}</div></Td>
+          <Td><Badge text={e.tipo}/></Td><Td>{fmtDate(e.fecha)}, {fmtHora(e.hora)}h</Td><Td>{e.relator}</Td>
+          <Td>{e.att?<Badge text="Asistió" variant="success"/>:isUpcoming(e.fecha)?<Badge text="Inscrito" variant="info"/>:<Badge text="No asistió" variant="danger"/>}</Td>
+        </tr>)}/>
+    </Card>
+  </div>;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SHELLS
+   ════════════════════════════════════════════════════════════════ */
+const ADMIN_NAV=[{id:'a-dashboard',label:'Dashboard',icon:'home'},{id:'a-eventos',label:'Eventos',icon:'calendar'},{id:'a-docentes',label:'Docentes',icon:'users'}];
+const DOC_NAV=[{id:'d-eventos',label:'Eventos',icon:'calendar'},{id:'d-inscripciones',label:'Mis inscripciones',icon:'clip'},{id:'d-ficha',label:'Mi ficha',icon:'person'}];
+
+function Sidebar({nav,active,onNav,onLogout,title,subtitle,color,extra,onSettings,showMonitor,onMonitor,isAdmin,onSync,syncing,lastSync}) {
+  const cfg=getSPConfig();
+  return <div className="sidebar-desktop" style={{width:224,background:color,color:'#fff',display:'flex',
+    flexDirection:'column',flexShrink:0,position:'sticky',top:0,height:'100dvh',overflow:'auto'}}>
+    <div style={{padding:'28px 20px 20px'}}>
+      <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,.45)',letterSpacing:1.2,textTransform:'uppercase',marginBottom:8}}>{subtitle}</div>
+      <div style={{fontSize:15,fontWeight:800,lineHeight:1.35}}>{title}</div>
+      {isAdmin&&cfg.mode==='googlesheets'&&<div style={{marginTop:8,display:'flex',alignItems:'center',gap:5,
+        fontSize:10,color:'rgba(255,255,255,.5)',fontWeight:600}}>
+        <Icon name="wifi" size={11}/>Google Sheets
+      </div>}
+    </div>
+    {extra}
+    <nav style={{flex:1,padding:'4px 12px'}}>
+      {nav.map(n=><button key={n.id} onClick={()=>onNav(n.id)} style={{
+        display:'flex',alignItems:'center',gap:10,width:'100%',padding:'9px 12px',borderRadius:8,
+        border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:500,textAlign:'left',
+        transition:'all .12s',marginBottom:2,
+        background:active===n.id?'rgba(255,255,255,.16)':'transparent',
+        color:active===n.id?'#fff':'rgba(255,255,255,.65)'}}>
+        <Icon name={n.icon} size={17}/>{n.label}
+      </button>)}
+    </nav>
+    <div style={{padding:'8px 12px 8px'}}>
+      {onSync&&isAdmin&&(()=>{
+        const cfg=getSPConfig();
+        if(cfg.mode!=='googlesheets'||!cfg.gsUrl) return null;
+        const fmtSync=ts=>{if(!ts)return'Nunca';try{const d=new Date(ts);return d.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})+' · '+d.toLocaleDateString('es-CL',{day:'2-digit',month:'short'});}catch{return'—';}};
+        return <div style={{margin:'0 4px 4px',borderRadius:8,background:'rgba(255,255,255,.08)',padding:'8px 10px'}}>
+          <div style={{fontSize:10,color:'rgba(255,255,255,.4)',fontWeight:600,letterSpacing:.5,marginBottom:6,textTransform:'uppercase'}}>Última sincronización</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,.6)',marginBottom:8}}>{fmtSync(lastSync)}</div>
+          <button onClick={onSync} disabled={syncing} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,width:'100%',
+            padding:'6px 10px',borderRadius:6,border:'1px solid rgba(255,255,255,.2)',cursor:syncing?'wait':'pointer',
+            fontFamily:'inherit',fontSize:12,fontWeight:600,color:syncing?'rgba(255,255,255,.4)':'#fff',
+            background:syncing?'transparent':'rgba(255,255,255,.12)',transition:'all .12s'}}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              style={{animation:syncing?'spin 1s linear infinite':'none'}}>
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            {syncing?'Sincronizando…':'Sincronizar ahora'}
+          </button>
+        </div>;
+      })()}
+      {onMonitor&&<button onClick={onMonitor} style={{display:'flex',alignItems:'center',gap:10,width:'100%',
+        padding:'8px 12px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12,
+        fontWeight:500,color:showMonitor?'#4ADE80':'rgba(255,255,255,.4)',background:'transparent',marginBottom:2,
+        transition:'all .12s'}}>
+        <Icon name="wifi" size={15}/>Monitor de actividad
+      </button>}
+      {onSettings&&<button onClick={onSettings} style={{display:'flex',alignItems:'center',gap:10,width:'100%',
+        padding:'8px 12px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12,
+        fontWeight:500,color:'rgba(255,255,255,.4)',background:'transparent',marginBottom:2,transition:'all .12s'}}>
+        <Icon name="gear" size={15}/>Configuración
+      </button>}
+      <button onClick={onLogout} style={{display:'flex',alignItems:'center',gap:10,width:'100%',
+        padding:'8px 12px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:13,
+        fontWeight:500,color:'rgba(255,255,255,.5)',background:'transparent',transition:'all .12s'}}>
+        <Icon name="logout" size={16}/>Cambiar rol
+      </button>
+    </div>
+  </div>;
+}
+
+function AdminShell({onLogout}) {
+  const [view,setView]=useState(()=>localStorage.getItem('adm_view')||'a-dashboard');
+  const [eventId,setEventId]=useState(null);
+  const [eventTab,setEventTab]=useState(null);
+  const [teacherRut,setTeacherRut]=useState(null);
+  const [tick,setTick]=useState(0);
+  const [showSettings,setShowSettings]=useState(false);
+  const [showMonitor,setShowMonitor]=useState(false);
+  const [syncing,setSyncing]=useState(false);
+  const [lastSync,setLastSync]=useState(()=>localStorage.getItem('cap_last_sync')||null);
+  const [staleSync,setStaleSync]=useState(false);
+
+  // Revisa cada minuto si la última sync tiene más de 20 minutos
+  useEffect(()=>{
+    const cfg=getSPConfig();
+    if(cfg.mode!=='googlesheets') return;
+    const STALE_MS = 20 * 60 * 1000;
+    function check() {
+      const ts = localStorage.getItem('cap_last_sync');
+      if(!ts) { setStaleSync(true); return; }
+      setStaleSync(Date.now() - new Date(ts).getTime() > STALE_MS);
+    }
+    check();
+    const id = setInterval(check, 60 * 1000);
+    return () => clearInterval(id);
+  },[lastSync]);
+
+  useEffect(()=>{
+    const handler=()=>setTick(t=>t+1);
+    window.addEventListener('cap:datachange',handler);
+    return ()=>window.removeEventListener('cap:datachange',handler);
+  },[]);
+
+  function navigate(v,id,tab) {
+    setView(v);
+    if(id&&v==='a-evento'){setEventId(id);setEventTab(tab||null);}
+    if(id&&v==='a-docente') setTeacherRut(id);
+    localStorage.setItem('adm_view',v);
+  }
+
+  async function handleSync() {
+    const cfg=getSPConfig();
+    if(cfg.mode!=='googlesheets'||!cfg.gsUrl) return;
+    setSyncing(true);
+    try {
+      await GS.bootstrap();
+      const ts=localStorage.getItem('cap_last_sync')||new Date().toISOString();
+      setLastSync(ts);
+      setStaleSync(false);
+      setTick(t=>t+1);
+    } catch(e){ console.error('Sync error',e); }
+    finally { setSyncing(false); }
+  }
+
+  const mainNav=view==='a-evento'?'a-eventos':view==='a-docente'?'a-docentes':view;
+  const content=view==='a-dashboard'?<AdminDashboard navigate={navigate} tick={tick}/>
+    :view==='a-eventos'?<AdminEventos navigate={navigate} tick={tick} setTick={setTick}/>
+    :view==='a-evento'?<AdminEventoDetail eventId={eventId} initTab={eventTab} navigate={navigate} tick={tick} setTick={setTick}/>
+    :view==='a-docentes'?<AdminDocentes navigate={navigate} tick={tick} setTick={setTick}/>
+    :view==='a-docente'?<AdminDocenteDetail rut={teacherRut} navigate={navigate} tick={tick}/>
+    :null;
+
+  return <div style={{display:'flex',minHeight:'100dvh'}}>
+    <Sidebar nav={ADMIN_NAV} active={mainNav} onNav={v=>navigate(v)} onLogout={onLogout}
+      color="#1E3A8A" subtitle="Administrador" title="Capacitaciones Docentes" isAdmin={true}
+      onSettings={()=>setShowSettings(true)} showMonitor={showMonitor}
+      onMonitor={DEV_MODE?()=>setShowMonitor(m=>!m):null}
+      onSync={handleSync} syncing={syncing} lastSync={lastSync} staleSync={staleSync}/>
+    <div style={{flex:1,overflow:'auto'}}>
+      {staleSync&&getSPConfig().mode==='googlesheets'&&<div style={{
+        background:'#FFF7ED',borderBottom:'1px solid #FED7AA',
+        padding:'9px 20px',display:'flex',alignItems:'center',
+        justifyContent:'space-between',gap:12,fontSize:13,color:'#92400E'}}>
+        <span style={{display:'flex',alignItems:'center',gap:8}}>
+          <Icon name="warn" size={15}/>
+          {lastSync
+            ? `Los datos no se sincronizan hace más de 20 minutos.`
+            : 'No se ha realizado ninguna sincronización en esta sesión.'}
+          {' '}Pueden existir cambios de otros administradores no reflejados.
+        </span>
+        <button onClick={handleSync} disabled={syncing} style={{background:'#F97316',color:'#fff',border:'none',
+          borderRadius:6,padding:'5px 14px',fontSize:12,fontWeight:700,cursor:syncing?'wait':'pointer',
+          fontFamily:'inherit',whiteSpace:'nowrap',flexShrink:0}}>
+          {syncing?'Sincronizando…':'Sincronizar ahora'}
+        </button>
+      </div>}
+      <div className="main-pad" style={{maxWidth:1140,margin:'0 auto',padding:'32px 28px'}}>{content}</div>
+    </div>
+    <nav className="mob-nav">
+      {ADMIN_NAV.map(n=><button key={n.id} onClick={()=>navigate(n.id)} style={{
+        flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3,
+        background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',padding:'4px 0',
+        color:mainNav===n.id?'#1E3A8A':'#94A3B8',fontSize:10,fontWeight:600}}>
+        <Icon name={n.icon} size={20}/>{n.label}
+      </button>)}
+      <button onClick={onLogout} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',
+        gap:3,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',padding:'4px 0',
+        color:'#94A3B8',fontSize:10,fontWeight:600}}>
+        <Icon name="logout" size={20}/>Salir
+      </button>
+    </nav>
+    <SettingsPanel open={showSettings} onClose={()=>setShowSettings(false)}/>
+    {showMonitor&&<APIMonitor onClose={()=>setShowMonitor(false)}/>}
+  </div>;
+}
+
+function DocenteShell({rut,onLogout}) {
+  const teacher=DB.findTeacher(rut);
+  const [view,setView]=useState(()=>localStorage.getItem('doc_view_'+rut)||'d-eventos');
+  const [tick,setTick]=useState(0);
+  function nav(v){setView(v);localStorage.setItem('doc_view_'+rut,v);}
+  const content=view==='d-eventos'?<DocenteEventos rut={rut} tick={tick} setTick={setTick}/>
+    :view==='d-inscripciones'?<DocenteInscripciones rut={rut} tick={tick} setTick={setTick}/>
+    :view==='d-ficha'?<DocenteFicha rut={rut}/>:null;
+  return <div style={{display:'flex',minHeight:'100dvh'}}>
+    <Sidebar nav={DOC_NAV} active={view} onNav={nav} onLogout={onLogout}
+      color="#0D6E68" subtitle="Portal docente" title="Capacitaciones Docentes"
+      extra={teacher&&<div style={{margin:'0 12px 12px',background:'rgba(255,255,255,.12)',borderRadius:8,padding:'10px 12px'}}>
+        <div style={{fontSize:13,fontWeight:700}}>{teacher.nombre}</div>
+        <div style={{fontSize:11,color:'rgba(255,255,255,.65)',marginTop:2}}>{teacher.especialidad}</div>
+      </div>}/>
+    <div style={{flex:1,overflow:'auto'}}>
+      <div className="main-pad" style={{maxWidth:1140,margin:'0 auto',padding:'32px 28px'}}>{content}</div>
+    </div>
+    <nav className="mob-nav">
+      {DOC_NAV.map(n=><button key={n.id} onClick={()=>nav(n.id)} style={{
+        flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3,
+        background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',padding:'4px 0',
+        color:view===n.id?'#0D6E68':'#94A3B8',fontSize:10,fontWeight:600}}>
+        <Icon name={n.icon} size={20}/>{n.label}
+      </button>)}
+      <button onClick={onLogout} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',
+        gap:3,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',padding:'4px 0',
+        color:'#94A3B8',fontSize:10,fontWeight:600}}>
+        <Icon name="logout" size={20}/>Salir
+      </button>
+    </nav>
+  </div>;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ROLE SELECTOR
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Login Administrador ── */
+function AdminLogin({onSuccess, onBack}) {
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
+  const [err,  setErr]  = useState('');
+
+  function handleLogin() {
+    const ATT_KEY = 'adm_att';
+    const MAX_ATT = 5;
+    const LOCKOUT_MS = 5 * 60 * 1000;
+    let att = { n: 0, ts: 0 };
+    try { att = JSON.parse(sessionStorage.getItem(ATT_KEY) || '{"n":0,"ts":0}'); } catch {}
+    const now = Date.now();
+    if (att.n >= MAX_ATT) {
+      const remaining = Math.ceil((att.ts + LOCKOUT_MS - now) / 60000);
+      if (remaining > 0) { setErr(`Demasiados intentos. Espera ${remaining} minuto${remaining!==1?'s':''}.`); return; }
+      att = { n: 0, ts: 0 };
+    }
+    const cfg = getSPConfig();
+    const u = 'Admin';   // TODO: reemplazar por cfg.adminUser al cierre del proyecto
+    const p = '123456';  // TODO: reemplazar por cfg.adminPass al cierre del proyecto
+    if(user.trim() === u && pass === p) {
+      sessionStorage.setItem(ATT_KEY, JSON.stringify({ n: 0, ts: 0 }));
+      onSuccess();
+    } else {
+      const newAtt = { n: att.n + 1, ts: now };
+      sessionStorage.setItem(ATT_KEY, JSON.stringify(newAtt));
+      const rem = MAX_ATT - newAtt.n;
+      setErr(rem > 0 ? `Usuario o contraseña incorrectos. Te quedan ${rem} intento${rem!==1?'s':''}.` : 'Acceso bloqueado por 5 minutos.');
+      setPass('');
+    }
+  }
+
+  return (
+    <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',
+      background:'linear-gradient(135deg,#EFF6FF,#DBEAFE)',padding:20}}>
+      <div className="fade-in" style={{background:'#fff',borderRadius:20,padding:'36px 40px',
+        width:'100%',maxWidth:400,boxShadow:'0 20px 60px rgba(15,23,42,.10)'}}>
+        <button onClick={onBack} style={{background:'none',border:'none',cursor:'pointer',
+          display:'flex',alignItems:'center',gap:6,color:'#94A3B8',fontSize:13,
+          fontFamily:'inherit',fontWeight:500,marginBottom:28,padding:0}}>
+          <Icon name="back" size={15}/>Volver
+        </button>
+        <div style={{width:52,height:52,borderRadius:14,background:'#EFF6FF',color:'#1E3A8A',
+          display:'flex',alignItems:'center',justifyContent:'center',marginBottom:20}}>
+          <Icon name="brief" size={26}/>
+        </div>
+        <h1 style={{fontSize:22,fontWeight:800,marginBottom:6}}>Acceso Administrador</h1>
+        <p style={{fontSize:13,color:'#64748B',marginBottom:28,lineHeight:1.5}}>
+          Ingresa tus credenciales para administrar el sistema.
+        </p>
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <Field label="Usuario" required>
+            <TInput value={user} onChange={e=>setUser(e.target.value)} placeholder="admin"
+              autoFocus onKeyDown={e=>e.key==='Enter'&&document.getElementById('adm-pass')?.focus()}/>
+          </Field>
+          <Field label="Contraseña" required error={err}>
+            <input id="adm-pass" type="password" value={pass}
+              onChange={e=>setPass(e.target.value)} placeholder="••••••"
+              onKeyDown={e=>e.key==='Enter'&&handleLogin()}
+              style={{padding:'9px 12px',borderRadius:8,border:'1px solid #E2E8F0',
+              fontSize:14,fontFamily:'inherit',outline:'none',width:'100%',color:'#0F172A'}}/>
+          </Field>
+        </div>
+        {err&&<div style={{fontSize:12,color:'#EF4444',marginTop:8}}>{err}</div>}
+        <Btn onClick={handleLogin} full size="lg" style={{marginTop:20,background:'#1E3A8A'}}>
+          Ingresar
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ── Login Docente ── */
+function DocenteLogin({onSuccess, onBack}) {
+  const [step,    setStep]   = useState('buscar');
+  const [input,   setInput]  = useState('');
+  const [pin,     setPin]    = useState('');
+  const [pin2,    setPin2]   = useState('');
+  const [found,   setFound]  = useState(null);
+  const [loading, setLoading]= useState(false);
+  const [error,   setError]  = useState('');
+  const [form,    setForm]   = useState({nombre:'',email:'',especialidad:'',pin:'',pin2:''});
+  const cfg = getSPConfig();
+
+  async function handleFind() {
+    const q = input.trim();
+    if(!q){ setError('Ingresa tu RUT o correo institucional'); return; }
+    setError(''); setLoading(true);
+    let teacher = null;
+    try {
+      if(cfg.mode==='googlesheets' && cfg.gsUrl) {
+        teacher = await GS.findDocente(q);
+      } else {
+        const all = DB.teachers();
+        const qn  = q.toLowerCase().replace(/[.\s]/g,'');
+        teacher = all.find(t =>
+          (t.rut||'').replace(/[.\s]/g,'').toLowerCase() === qn ||
+          (t.email||'').toLowerCase() === q.toLowerCase()
+        ) || null;
+      }
+    } catch(e) {
+      setLoading(false);
+      setError('Error al conectar con Google Sheets. Verifica tu conexión.');
+      return;
+    }
+    setLoading(false);
+    if(teacher) {
+      setFound(teacher);
+      if(!DB.findTeacher(teacher.rut)) DB.addTeacher(teacher);
+      if(teacher.pin) { setStep('pin'); }
+      else            { setStep('setup-pin'); }
+    } else {
+      // Not found in GS → check if looks like a valid RUT to register as new
+      const cleanRut = q.replace(/[^0-9kK]/g,'');
+      if(cleanRut.length >= 7 && validarRut(q)) {
+        setFound({ rut:formatRut(q), nombre:'', email:'', especialidad:'', pin:'' });
+        setStep('nuevo');
+      } else {
+        setError('No encontramos ese RUT o correo. Verifica e intenta de nuevo.');
+      }
+    }
+  }
+
+  const PIN_MAX = 3;
+  const PIN_LOCKOUT_MS = 5 * 60 * 1000;
+  function getPinAtt(rut){ try{ return JSON.parse(sessionStorage.getItem('pin_att_'+rut)||'{"n":0,"ts":0}'); }catch{ return {n:0,ts:0}; } }
+  function setPinAtt(rut,d){ sessionStorage.setItem('pin_att_'+rut, JSON.stringify(d)); }
+
+  async function handlePin() {
+    const att = getPinAtt(found.rut);
+    const now = Date.now();
+    if(att.n >= PIN_MAX) {
+      const remaining = Math.ceil((att.ts + PIN_LOCKOUT_MS - now) / 60000);
+      if(remaining > 0){ setError(`Demasiados intentos. Espera ${remaining} minuto${remaining!==1?'s':''}.`); return; }
+      setPinAtt(found.rut, {n:0,ts:0});
+    }
+    const fresh = DB.findTeacher(found.rut);
+    const storedPin = String((fresh && fresh.pin) ? fresh.pin : (found.pin || ''));
+    const entered   = String(pin || '').trim();
+    const ok = entered ? await verifyPin(entered, storedPin) : false;
+    if(ok) {
+      setPinAtt(found.rut, {n:0,ts:0});
+      onSuccess(found.rut);
+    } else {
+      const newAtt = { n: att.n + 1, ts: now };
+      setPinAtt(found.rut, newAtt);
+      const rem = PIN_MAX - newAtt.n;
+      setError(rem > 0 ? `PIN incorrecto. Te quedan ${rem} intento${rem!==1?'s':''}.` : 'PIN bloqueado por 5 minutos por seguridad.');
+      setPin('');
+    }
+  }
+
+  async function handleSetupPin() {
+    if(pin && pin !== pin2){ setError('Los PINs no coinciden'); return; }
+    const pinToStore = pin ? await hashPin(pin) : '';
+    // Persistir localmente (siempre funciona)
+    const teachers = DB.teachers().map(t => DB.sameRut(t.rut, found.rut) ? { ...t, pin: pinToStore } : t);
+    // Si el docente no estaba en localStorage, agregarlo
+    if(!DB.findTeacher(found.rut)) teachers.push({...found, pin: pinToStore});
+    localStorage.setItem('cap_teachers', JSON.stringify(teachers));
+    // Sync a GS (fire-and-forget, no bloquea)
+    if(pinToStore && cfg.mode==='googlesheets' && cfg.gsUrl) {
+      GS.updateDocente({...found, pin: pinToStore}).catch(()=>{});
+    }
+    onSuccess(found.rut);
+  }
+
+  async function handleNuevo() {
+    if(!form.nombre){ setError('El nombre es requerido'); return; }
+    if(form.pin && form.pin !== form.pin2){ setError('Los PINs no coinciden'); return; }
+    // Validación opcional de dominio institucional
+    const sysConf = getSysConfig();
+    const dominio = (sysConf.dominio_email || '').trim();
+    if(dominio && form.email && !form.email.toLowerCase().endsWith(dominio.toLowerCase())) {
+      setError(`El correo debe pertenecer al dominio ${dominio}`);
+      return;
+    }
+    const pinToStore = form.pin ? await hashPin(form.pin) : '';
+    const teacher = { rut:found.rut, nombre:form.nombre, email:form.email, especialidad:form.especialidad, pin: pinToStore };
+    // Persistir localmente primero (confiable)
+    DB.addTeacher(teacher);
+    // Sync a GS en background (no bloquea el ingreso)
+    if(cfg.mode==='googlesheets' && cfg.gsUrl) GS.addDocente(teacher).catch(()=>{});
+    onSuccess(found.rut);
+  }
+
+  const WelcomeCard = () => found ? (
+    <div style={{background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:10,
+      padding:'12px 16px',marginBottom:22}}>
+      <div style={{fontSize:14,fontWeight:700,color:'#0F172A'}}>{found.nombre}</div>
+      <div style={{fontSize:12,color:'#64748B',marginTop:2}}>
+        {found.rut}{found.especialidad ? ` · ${found.especialidad}` : ''}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',
+      background:'linear-gradient(135deg,#F0FDFA,#CCFBF1)',padding:20}}>
+      <div className="fade-in" style={{background:'#fff',borderRadius:20,padding:'36px 40px',
+        width:'100%',maxWidth:420,boxShadow:'0 20px 60px rgba(15,23,42,.10)'}}>
+
+        <button onClick={step==='buscar' ? onBack : ()=>{setStep('buscar');setFound(null);setPin('');setPin2('');setError('');}}
+          style={{background:'none',border:'none',cursor:'pointer',display:'flex',alignItems:'center',
+          gap:6,color:'#94A3B8',fontSize:13,fontFamily:'inherit',fontWeight:500,marginBottom:28,padding:0}}>
+          <Icon name="back" size={15}/>{step==='buscar' ? 'Volver' : 'Usar otro RUT o correo'}
+        </button>
+
+        <div style={{width:52,height:52,borderRadius:14,background:'#F0FDFA',color:'#0D9488',
+          display:'flex',alignItems:'center',justifyContent:'center',marginBottom:20}}>
+          <Icon name="person" size={26}/>
+        </div>
+
+        {/* PASO 1 — Buscar */}
+        {step==='buscar' && <>
+          <h1 style={{fontSize:22,fontWeight:800,marginBottom:8}}>Acceso docente</h1>
+          <p style={{fontSize:14,color:'#64748B',marginBottom:20,lineHeight:1.55}}>
+            Ingresa tu RUT o correo institucional.
+          </p>
+
+          <Field label="RUT o correo institucional" required error={error}
+            hint="Ej: 12.345.678-9 · nombre@universidad.cl">
+            <TInput value={input}
+              onChange={e=>setInput(e.target.value)}
+              onBlur={()=>{
+                const v=input.trim();
+                if(v && !v.includes('@')) setInput(formatRut(v));
+              }}
+              autoFocus placeholder="RUT o correo"
+              onKeyDown={e=>e.key==='Enter'&&handleFind()}/>
+          </Field>
+          <Btn onClick={handleFind} full size="lg" style={{marginTop:16}} disabled={loading}>
+            {loading ? 'Buscando…' : 'Continuar'}
+          </Btn>
+
+        </>}
+
+        {/* PASO 2 — Verificar PIN existente */}
+        {step==='pin' && found && <div className="fade-in">
+          <WelcomeCard/>
+          <h2 style={{fontSize:18,fontWeight:800,marginBottom:8}}>Ingresa tu PIN</h2>
+          <p style={{fontSize:13,color:'#64748B',marginBottom:20,lineHeight:1.5}}>
+            Tu cuenta tiene un PIN de seguridad configurado.
+          </p>
+          <Field label="PIN" required error={error}>
+            <TInput value={pin} onChange={e=>setPin(e.target.value)} type="password"
+              placeholder="••••" autoFocus
+              style={{fontSize:24,letterSpacing:8,textAlign:'center'}}
+              onKeyDown={e=>e.key==='Enter'&&handlePin()}/>
+          </Field>
+          <Btn onClick={handlePin} full size="lg" style={{marginTop:16}}>Ingresar</Btn>
+        </div>}
+
+        {/* PASO 2b — Crear PIN (primer ingreso de docente existente) */}
+        {step==='setup-pin' && found && <div className="fade-in">
+          <WelcomeCard/>
+          <div style={{background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:8,
+            padding:'10px 14px',marginBottom:20,fontSize:13,color:'#1D4ED8',lineHeight:1.5}}>
+            ¡Bienvenido! Es tu primer ingreso al sistema. Puedes crear un PIN de seguridad para futuras sesiones, o ingresar directo sin él.
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <Field label="Crear PIN (opcional)" hint="4 a 8 caracteres — lo necesitarás en futuros ingresos">
+              <TInput value={pin} onChange={e=>setPin(e.target.value)} type="password"
+                placeholder="••••" style={{letterSpacing:4}}/>
+            </Field>
+            {pin && <Field label="Confirmar PIN" error={error}>
+              <TInput value={pin2} onChange={e=>setPin2(e.target.value)} type="password"
+                placeholder="••••" style={{letterSpacing:4}}
+                onKeyDown={e=>e.key==='Enter'&&handleSetupPin()}/>
+            </Field>}
+          </div>
+          <Btn onClick={handleSetupPin} full size="lg" style={{marginTop:20}}>
+            {pin ? 'Guardar PIN e ingresar' : 'Ingresar sin PIN'}
+          </Btn>
+        </div>}
+
+        {/* PASO 3 — Nuevo docente no registrado */}
+        {step==='nuevo' && found && <div className="fade-in">
+          <div style={{background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:8,
+            padding:'10px 14px',marginBottom:20,fontSize:13,color:'#92400E',lineHeight:1.5}}>
+            El RUT <strong>{found.rut}</strong> no está en el registro. Completa tus datos para continuar.
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <Field label="Nombre completo" required>
+              <TInput value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))}
+                placeholder="Nombre y apellido" autoFocus/>
+            </Field>
+            <Field label="Correo institucional">
+              <TInput value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}
+                type="email" placeholder="correo@universidad.cl"/>
+            </Field>
+            <Field label="Decanato / Área">
+              <SInput value={form.especialidad} onChange={e=>setForm(p=>({...p,especialidad:e.target.value}))}
+                options={FACULTADES} placeholder="Selecciona…"/>
+            </Field>
+            <Field label="Crear PIN (opcional)" hint="Para proteger tu cuenta en futuros ingresos">
+              <TInput value={form.pin} onChange={e=>setForm(p=>({...p,pin:e.target.value}))}
+                type="password" placeholder="••••" style={{letterSpacing:4}}/>
+            </Field>
+            {form.pin && <Field label="Confirmar PIN" error={error}>
+              <TInput value={form.pin2} onChange={e=>setForm(p=>({...p,pin2:e.target.value}))}
+                type="password" placeholder="••••" style={{letterSpacing:4}}/>
+            </Field>}
+          </div>
+          <Btn onClick={handleNuevo} full size="lg" style={{marginTop:20}} disabled={!form.nombre}>
+            Guardar y acceder
+          </Btn>
+        </div>}
+
+      </div>
+
+    </div>
+  );
+}
+
+/* ── Selector inicial de rol ── */
+function RoleSelector({onSelect}) {
+  const [step, setStep] = useState('choose');
+
+  if(step==='admin')   return <AdminLogin   onSuccess={()=>onSelect('admin')}   onBack={()=>setStep('choose')}/>;
+  if(step==='docente') return <DocenteLogin onSuccess={(rut)=>onSelect('docente',rut)} onBack={()=>setStep('choose')}/>;
+
+  return (
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',
+      justifyContent:'center',background:'linear-gradient(160deg,#F0FDFA 0%,#EFF6FF 50%,#F8FAFC 100%)',
+      padding:'32px 20px'}}>
+      <div className="fade-in" style={{width:'100%',maxWidth:420,display:'flex',flexDirection:'column',alignItems:'center',gap:0}}>
+
+        {/* Logo + título */}
+        <div style={{width:68,height:68,borderRadius:20,
+          background:'linear-gradient(135deg,#0D9488 0%,#1E3A8A 100%)',
+          display:'flex',alignItems:'center',justifyContent:'center',marginBottom:24,
+          boxShadow:'0 12px 32px rgba(13,148,136,0.25)'}}>
+          <Icon name="checkc" size={32} color="#fff"/>
+        </div>
+        <div style={{fontSize:11,fontWeight:700,color:'#94A3B8',letterSpacing:2,
+          textTransform:'uppercase',marginBottom:8}}>Sistema de Registro</div>
+        <h1 style={{fontSize:28,fontWeight:800,color:'#0F172A',lineHeight:1.2,
+          marginBottom:6,textAlign:'center'}}>Capacitaciones Docentes</h1>
+        <p style={{fontSize:14,color:'#64748B',marginBottom:40,textAlign:'center'}}>
+          Selecciona cómo deseas ingresar
+        </p>
+
+        {/* Botón principal — Docente */}
+        <button onClick={()=>setStep('docente')} style={{width:'100%',background:'#0D9488',
+          border:'none',borderRadius:16,padding:'22px 28px',cursor:'pointer',fontFamily:'inherit',
+          display:'flex',alignItems:'center',gap:18,textAlign:'left',marginBottom:12,
+          boxShadow:'0 8px 28px rgba(13,148,136,0.30)',transition:'all .18s'}}
+          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 12px 36px rgba(13,148,136,0.40)';}}
+          onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 8px 28px rgba(13,148,136,0.30)';}}>
+          <div style={{width:52,height:52,borderRadius:14,background:'rgba(255,255,255,0.2)',
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <Icon name="person" size={26} color="#fff"/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:18,fontWeight:800,color:'#fff',marginBottom:3}}>Soy docente</div>
+            <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.4}}>
+              Inscríbete en actividades y registra tu asistencia
+            </div>
+          </div>
+          <div style={{color:'rgba(255,255,255,0.6)',fontSize:20}}>›</div>
+        </button>
+
+        {/* Separador */}
+        <div style={{display:'flex',alignItems:'center',gap:12,width:'100%',margin:'8px 0 16px'}}>
+          <div style={{flex:1,height:1,background:'#E2E8F0'}}/>
+          <span style={{fontSize:12,color:'#CBD5E1',fontWeight:500}}>o</span>
+          <div style={{flex:1,height:1,background:'#E2E8F0'}}/>
+        </div>
+
+        {/* Botón secundario — Admin */}
+        <button onClick={()=>setStep('admin')} style={{width:'100%',background:'#fff',
+          border:'1.5px solid #E2E8F0',borderRadius:12,padding:'14px 20px',cursor:'pointer',
+          fontFamily:'inherit',display:'flex',alignItems:'center',gap:14,textAlign:'left',
+          transition:'all .18s',boxShadow:'0 2px 8px rgba(15,23,42,0.05)'}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor='#1E3A8A';e.currentTarget.style.background='#F8FAFC';}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor='#E2E8F0';e.currentTarget.style.background='#fff';}}>
+          <div style={{width:36,height:36,borderRadius:10,background:'#EFF6FF',
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <Icon name="brief" size={18} color="#1E3A8A"/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:14,fontWeight:700,color:'#1E3A8A'}}>Acceso administrador</div>
+            <div style={{fontSize:12,color:'#94A3B8'}}>Solo para personal del sistema</div>
+          </div>
+          <Icon name="back" size={14} color="#CBD5E1" style={{transform:'rotate(180deg)'}}/>
+        </button>
+
+        <p style={{fontSize:11,color:'#CBD5E1',marginTop:32,textAlign:'center'}}>
+          Sistema de Registro de Capacitaciones Docentes
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ROOT APP
+   ════════════════════════════════════════════════════════════════ */
+function App() {
+  const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 horas
+  const [session,  setSession]  = useState(()=>{
+    try {
+      // Admin puede estar en localStorage, docente en sessionStorage
+      const raw = localStorage.getItem('cap_session') || sessionStorage.getItem('cap_session');
+      const s = JSON.parse(raw);
+      if (!s) return null;
+      if (s.ts && (Date.now() - s.ts) > SESSION_TTL) {
+        localStorage.removeItem('cap_session');
+        sessionStorage.removeItem('cap_session');
+        return null;
+      }
+      return s;
+    } catch { return null; }
+  });
+  const [booting,  setBooting]  = useState(false);
+  const [bootErr,  setBootErr]  = useState(false);
+  const [bootWarn, setBootWarn] = useState(false);
+
+  /* Al iniciar en modo GS, carga los datos frescos desde la hoja */
+  useEffect(()=>{
+    const cfg = getSPConfig();
+    if(cfg.mode==='googlesheets' && cfg.gsUrl) {
+      if(!session) setBooting(true);
+      GoogleSheetsAPI.bootstrap().then(result=>{
+        setBooting(false);
+        autoOpenEvents(); // verificar aperturas programadas tras sincronizar con GS
+        if(!result || !result.ok) {
+          if(session) setBootWarn(true);
+          else setBootErr(true);
+        }
+      });
+    } else {
+      autoOpenEvents(); // modo local: verificar aperturas con datos locales
+    }
+  },[]);
+
+  function login(role,rut){
+    const s={role,rut:rut||null,ts:Date.now()};
+    setSession(s);
+    // Admin usa localStorage (persiste), docente usa sessionStorage (se borra al cerrar)
+    if(role==='admin') localStorage.setItem('cap_session',JSON.stringify(s));
+    else sessionStorage.setItem('cap_session',JSON.stringify(s));
+  }
+  function logout(){
+    setSession(null);
+    localStorage.removeItem('cap_session');
+    sessionStorage.removeItem('cap_session');
+  }
+
+  /* Pantalla de carga mientras bootstrap está en curso */
+  if(booting) return (
+    <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',
+      background:'linear-gradient(145deg,#0F172A 0%,#1E3A8A 60%,#0D9488 100%)'}}>
+      <div className="fade-in" style={{textAlign:'center',padding:40,display:'flex',flexDirection:'column',alignItems:'center',gap:0}}>
+        {/* Logo animado */}
+        <div style={{position:'relative',width:80,height:80,marginBottom:32}}>
+          <div style={{position:'absolute',inset:0,borderRadius:'50%',border:'2px solid rgba(255,255,255,0.15)',animation:'spin 3s linear infinite'}}/>
+          <div style={{position:'absolute',inset:6,borderRadius:'50%',border:'2px solid rgba(255,255,255,0.25)',animation:'spin 2s linear infinite reverse'}}/>
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{width:42,height:42,borderRadius:12,background:'rgba(255,255,255,0.12)',
+              backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',
+              border:'1px solid rgba(255,255,255,0.2)'}}>
+              <Icon name="checkc" size={22} color="rgba(255,255,255,0.9)"/>
+            </div>
+          </div>
+        </div>
+        {/* Texto */}
+        <div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)',
+          letterSpacing:3,textTransform:'uppercase',marginBottom:10}}>
+          Capacitaciones
+        </div>
+        <div style={{fontSize:22,fontWeight:800,color:'#fff',marginBottom:6,letterSpacing:-0.5}}>
+          Iniciando sesión
+        </div>
+        <div style={{fontSize:14,color:'rgba(255,255,255,0.45)',marginBottom:40}}>
+          Sincronizando datos…
+        </div>
+        {/* Barra de progreso animada */}
+        <div style={{width:200,height:2,background:'rgba(255,255,255,0.1)',borderRadius:1,overflow:'hidden'}}>
+          <div style={{height:'100%',background:'linear-gradient(90deg,#0D9488,#3B82F6)',
+            borderRadius:1,animation:'loading-bar 1.8s ease-in-out infinite'}}/>
+        </div>
+      </div>
+      <style>{`@keyframes loading-bar{0%{width:0%;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0%;margin-left:100%}}`}</style>
+    </div>
+  );
+
+  /* Error de conexión con GS al iniciar (sin sesión activa) */
+  if(bootErr) return (
+    <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',background:'#F1F5F9'}}>
+      <div className="fade-in" style={{textAlign:'center',padding:40,maxWidth:420}}>
+        <div style={{width:56,height:56,borderRadius:16,background:'#FEE2E2',color:'#B91C1C',
+          display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 20px'}}>
+          <Icon name="warn" size={28}/>
+        </div>
+        <div style={{fontSize:16,fontWeight:700,color:'#0F172A',marginBottom:8}}>
+          No se pudo conectar con Google Sheets
+        </div>
+        <div style={{fontSize:13,color:'#64748B',lineHeight:1.6,marginBottom:24}}>
+          Verifica que la URL del Apps Script sea correcta y que el script esté desplegado con acceso <em>Cualquier usuario</em>.
+        </div>
+        <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
+          <Btn onClick={()=>{ setBootErr(false); setBooting(true);
+            GoogleSheetsAPI.bootstrap().then(r=>{ setBooting(false); if(!r||!r.ok) setBootErr(true); }); }}
+            variant="primary">
+            <Icon name="cloud" size={15}/>Reintentar conexión
+          </Btn>
+          <Btn onClick={()=>setBootErr(false)} variant="secondary">
+            Continuar sin conexión
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+
+  if(!session)                 return <RoleSelector onSelect={login}/>;
+  return <>
+    {bootWarn&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:2000,
+      background:'#FEF3C7',borderBottom:'1px solid #FDE68A',padding:'8px 20px',
+      display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,fontSize:13,color:'#92400E'}}>
+      <span>⚠ No se pudo sincronizar con Google Sheets. Mostrando datos guardados localmente.</span>
+      <button onClick={()=>setBootWarn(false)} style={{background:'none',border:'none',cursor:'pointer',
+        color:'#92400E',fontWeight:700,fontSize:16,padding:'0 4px'}}>✕</button>
+    </div>}
+    {session.role==='admin'   && <AdminShell   onLogout={logout}/>}
+    {session.role==='docente' && <DocenteShell rut={session.rut} onLogout={logout}/>}
+  </>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
