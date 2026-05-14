@@ -208,8 +208,8 @@ const getSPConfig = () => {
   try {
     const raw = JSON.parse(localStorage.getItem(SP_KEY));
     const cfg = { ...SP_DEFAULTS, ...raw };
-    if (cfg.gsUrl)     cfg.gsUrl     = _dec(cfg.gsUrl);
-    if (cfg.adminPass) cfg.adminPass = _dec(cfg.adminPass);
+    if (cfg.gsUrl)              cfg.gsUrl     = _dec(cfg.gsUrl);
+    if (raw && raw.adminPass)   cfg.adminPass = _dec(cfg.adminPass);
     // Si DEPLOY_CONFIG tiene URL, sobreescribe y fuerza modo googlesheets
     if (DEPLOY_CONFIG.gsUrl) {
       cfg.gsUrl = DEPLOY_CONFIG.gsUrl;
