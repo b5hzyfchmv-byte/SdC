@@ -124,7 +124,13 @@
     teacherAtts: rut     => get('cap_att').filter(a => sameRut(a.rut, rut) && a.tipo !== 'no_asistio'),
     hasAtt:      (eid, rut) => get('cap_att').some(a => a.eid === eid && sameRut(a.rut, rut) && a.tipo !== 'no_asistio'),
     hasNoAtt:    (eid, rut) => get('cap_att').some(a => a.eid === eid && sameRut(a.rut, rut) && a.tipo === 'no_asistio'),
-    markAtt:     (eid, rut, noAsistio=false) => { const arr = get('cap_att'); arr.push({ id:(noAsistio?'na-':'a-') + uid(), eid, rut, fecha: new Date().toISOString().slice(0,10), tipo: noAsistio?'no_asistio':'asistio' }); set('cap_att', arr); },
+    markAtt:     (eid, rut, noAsistio=false) => {
+      /* Elimina cualquier registro previo del mismo (eid+rut) antes de insertar
+         el nuevo. Evita duplicados si el admin reabre un evento y cambia el estado. */
+      const arr = get('cap_att').filter(a => !(a.eid === eid && sameRut(a.rut, rut)));
+      arr.push({ id:(noAsistio?'na-':'a-') + uid(), eid, rut, fecha: new Date().toISOString().slice(0,10), tipo: noAsistio?'no_asistio':'asistio' });
+      set('cap_att', arr);
+    },
 
     /* Closed events */
     closedEvents: () => { try{ return JSON.parse(localStorage.getItem('cap_closed')||'[]'); }catch{return [];} },
@@ -484,10 +490,10 @@ const GS = {
         _regsSeen.add(key); return true;
       });
 
-      // Columnas: ID | EventoID | RUT | Fecha | RegistradoPor
+      // Columnas: ID | EventoID | RUT | Fecha | Tipo (asistio / no_asistio)
       const attsArr = atts
         .filter(f => f[0] && f[0] !== 'ID')
-        .map(f => ({ id:f[0]||'', eid:f[1]||'', rut:f[2]||'', fecha:f[3]||'' }));
+        .map(f => ({ id:f[0]||'', eid:f[1]||'', rut:f[2]||'', fecha:f[3]||'', tipo:f[4]||'asistio' }));
 
       localStorage.setItem('cap_teachers', JSON.stringify(teachers));
       localStorage.setItem('cap_events',   JSON.stringify(eventsArr));
@@ -1366,7 +1372,7 @@ function SettingsPanel({open,onClose}) {
               ['Docentes',      'RUT · Nombre · Email · Decanato/Área · PIN · Fecha · Estado'],
               ['Eventos',       'ID · Nombre · Tipo · Fecha · Hora · Lugar · Cupos · Relator · Descripcion · Creado · Estado · Duración · EstadoPublicacion · FechaApertura'],
               ['Inscripciones', 'ID · EventoID · RUT · Fecha · Estado'],
-              ['Asistencias',   'ID · EventoID · RUT · Fecha · RegistradoPor'],
+              ['Asistencias',   'ID · EventoID · RUT · Fecha · Tipo (asistio/no_asistio)'],
               ['Log',           'ID · Fecha · Hora · Tipo · Usuario · EventoID · Detalle'],
               ['Configuracion', 'Clave · Valor'],
             ].map(([h,cols])=>(
@@ -1420,7 +1426,6 @@ function SettingsPanel({open,onClose}) {
         </Btn>
       </div>}
 
-      {/* ── Credenciales Admin ── */}
       {/* ── Sistema ── */}
       {tab==='sistema'&&<div style={{padding:24,display:'flex',flexDirection:'column',gap:20}}>
         <div style={{fontSize:13,color:'#64748B',lineHeight:1.5}}>
@@ -1499,7 +1504,8 @@ function SettingsPanel({open,onClose}) {
    ADMIN VIEWS
    ════════════════════════════════════════════════════════════════ */
 function AdminDashboard({navigate,tick}) {
-  const events=DB.events(),teachers=DB.teachers(),regs=DB.regs(),atts=DB.atts();
+  const events=DB.events(),teachers=DB.teachers(),regs=DB.regs();
+  const atts=DB.atts().filter(a => a.tipo !== 'no_asistio');
   const upcoming=events.filter(e=>!isPast(e.fecha));
   const todayEvs=events.filter(e=>isToday(e.fecha));
   const cfg=getSPConfig();
