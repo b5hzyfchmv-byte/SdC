@@ -33,16 +33,6 @@
     }
     .mob-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
       background: #fff; border-top: 1px solid #E2E8F0; padding: 8px 4px calc(8px + env(safe-area-inset-bottom)); }
-    .ms-input { width: 100%; padding: 8px 10px; border: 1px solid #8a8a8a; font-size: 15px;
-      font-family: 'Segoe UI',sans-serif; outline: none; color: #1b1b1b; }
-    .ms-input:focus { border-color: #0067b8; box-shadow: 0 0 0 1px #0067b8; }
-    .ms-btn { background: #0067b8; color: #fff; border: none; padding: 8px 20px; font-size: 15px;
-      cursor: pointer; font-family: 'Segoe UI',sans-serif; font-weight: 600; }
-    .ms-btn:hover { background: #005a9e; }
-    .dot-pulse { display: flex; gap: 6px; justify-content: center; }
-    .dot-pulse span { width: 10px; height: 10px; border-radius: 50%; background: #0067b8; animation: blink .8s ease-in-out infinite alternate; }
-    .dot-pulse span:nth-child(2) { animation-delay: .2s; }
-    .dot-pulse span:nth-child(3) { animation-delay: .4s; }
     .api-badge { font-family: monospace; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
   </style>
 </head>
@@ -169,11 +159,9 @@
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
-const DEV_MODE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+const DEV_MODE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+// file:// NO se considera DEV_MODE para preservar la protección anti-fuerza-bruta en demos distribuidos.
 const TODAY = new Date().toISOString().slice(0,10);
-
-// DESARROLLO: limpiar bloqueo de intentos al recargar la página (solo en localhost)
-if(DEV_MODE) sessionStorage.removeItem('adm_att');
 
 /* ════════════════════════════════════════════════════════════════
    CONFIGURACIÓN GOOGLE SHEETS
@@ -733,6 +721,51 @@ function isCheckInOpen(ev, now) {
 
 
 /* ════════════════════════════════════════════════════════════════
+   TOAST NOTIFICATION SYSTEM
+   ════════════════════════════════════════════════════════════════ */
+const _toastSubs = new Set();
+const toast = (msg, type='info', duration=4000) => {
+  _toastSubs.forEach(fn => fn({ msg, type, duration, id: Date.now() + Math.random() }));
+};
+function Toasts() {
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    const fn = entry => {
+      setList(l => [...l, entry]);
+      setTimeout(() => setList(l => l.filter(x => x.id !== entry.id)), entry.duration + 400);
+    };
+    _toastSubs.add(fn);
+    return () => _toastSubs.delete(fn);
+  }, []);
+  const colors = {
+    success: { bg:'#DCFCE7', border:'#BBF7D0', tx:'#15803D', icon:'✓' },
+    error:   { bg:'#FEE2E2', border:'#FECACA', tx:'#B91C1C', icon:'✕' },
+    warning: { bg:'#FEF3C7', border:'#FDE68A', tx:'#B45309', icon:'⚠' },
+    info:    { bg:'#EFF6FF', border:'#BFDBFE', tx:'#1D4ED8', icon:'ℹ' },
+  };
+  if (!list.length) return null;
+  return (
+    <div style={{position:'fixed',bottom:24,right:24,zIndex:9999,display:'flex',
+      flexDirection:'column-reverse',gap:10,pointerEvents:'none',maxWidth:360}}>
+      {list.map(t => {
+        const c = colors[t.type] || colors.info;
+        return (
+          <div key={t.id} className="slide-in" style={{
+            background:c.bg, border:`1px solid ${c.border}`, color:c.tx,
+            borderRadius:12, padding:'12px 16px', fontSize:14, fontWeight:500,
+            display:'flex', alignItems:'flex-start', gap:10, lineHeight:1.45,
+            boxShadow:'0 4px 16px rgba(15,23,42,.10)', pointerEvents:'all',
+          }}>
+            <span style={{fontWeight:800, fontSize:15, flexShrink:0}}>{c.icon}</span>
+            <span style={{flex:1}}>{t.msg}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
    ICONS
    ════════════════════════════════════════════════════════════════ */
 const IC = {
@@ -789,6 +822,7 @@ function Badge({text,variant}) {
     :variant==='danger'?{bg:'#FEE2E2',tx:'#B91C1C'}
     :variant==='info'?{bg:'#DBEAFE',tx:'#1D4ED8'}
     :variant==='ms'?{bg:'#EFF6FF',tx:'#0067b8'}
+    :variant==='neutral'?{bg:'#F1F5F9',tx:'#64748B'}
     :(TIPO_C[text]||{bg:'#F1F5F9',tx:'#475569'});
   return <span style={{display:'inline-flex',alignItems:'center',padding:'2px 10px',borderRadius:999,
     fontSize:12,fontWeight:600,background:c.bg,color:c.tx,whiteSpace:'nowrap'}}>{text}</span>;
@@ -1312,17 +1346,17 @@ function SettingsPanel({open,onClose}) {
 
           {/* Botón de prueba */}
           <button onClick={async()=>{
-            if(!cfg.gsUrl){alert('Primero ingresa la URL');return;}
+            if(!cfg.gsUrl){toast('Primero ingresa la URL','warning');return;}
             try{
               const token = DEPLOY_CONFIG.gsToken || '';
               const url = cfg.gsUrl+'?accion=leer&hoja=Docentes&token='+encodeURIComponent(token);
               const r=await fetch(url,{redirect:'follow'});
               const j=await r.json();
               if(j.error==='unauthorized')
-                alert('✗ Token incorrecto. Verifica que DEPLOY_CONFIG.gsToken coincida con CAP_TOKEN en el Apps Script.');
+                toast('Token incorrecto. Verifica que DEPLOY_CONFIG.gsToken coincida con CAP_TOKEN en el Apps Script.','error');
               else
-                alert(j.ok ? '✓ Conexión exitosa. Docentes: '+(j.datos||[]).length : '✗ Error: '+JSON.stringify(j));
-            }catch(e){alert('✗ No se pudo conectar: '+e.message);}
+                toast(j.ok ? 'Conexión exitosa. Docentes: '+(j.datos||[]).length : 'Error: '+JSON.stringify(j), j.ok?'success':'error');
+            }catch(e){toast('No se pudo conectar: '+e.message,'error');}
           }} style={{padding:'8px 14px',borderRadius:8,border:'1px solid #BBF7D0',background:'#F0FDF4',
             color:'#15803D',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
             display:'flex',alignItems:'center',gap:6}}>
@@ -1503,15 +1537,67 @@ function SettingsPanel({open,onClose}) {
 /* ════════════════════════════════════════════════════════════════
    ADMIN VIEWS
    ════════════════════════════════════════════════════════════════ */
-function AdminDashboard({navigate,tick}) {
+function AdminDashboard({navigate,tick,setTick}) {
   const events=DB.events(),teachers=DB.teachers(),regs=DB.regs();
   const atts=DB.atts().filter(a => a.tipo !== 'no_asistio');
   const upcoming=events.filter(e=>!isPast(e.fecha));
   const todayEvs=events.filter(e=>isToday(e.fecha));
   const cfg=getSPConfig();
+  const defaultCreds = (cfg.adminUser||'Admin').toLowerCase()==='admin' && (cfg.adminPass||'123456')==='123456';
+  const isEmpty = events.length === 0 && teachers.length === 0;
+
+  function seedDemoData() {
+    const hoy = TODAY;
+    const manana = new Date(Date.now()+86400000).toISOString().slice(0,10);
+    const semana = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+    const ayer   = new Date(Date.now()-86400000).toISOString().slice(0,10);
+    const mes    = new Date(Date.now()+30*86400000).toISOString().slice(0,10);
+    const sampleTeachers=[
+      {rut:'12345678-9',nombre:'Ana González Riquelme',email:'a.gonzalez@universidad.cl',especialidad:'Facultad de Artes Liberales',pin:''},
+      {rut:'9876543-2', nombre:'Carlos Herrera Moya',  email:'c.herrera@universidad.cl', especialidad:'Facultad de Ingeniería y Ciencias',pin:''},
+      {rut:'15678234-6',nombre:'Mónica Parra Soto',    email:'m.parra@universidad.cl',   especialidad:'Escuela de Psicología',pin:''},
+      {rut:'11223344-5',nombre:'Rodrigo Fuentes Lagos', email:'r.fuentes@universidad.cl', especialidad:'Escuela de Negocios',pin:''},
+      {rut:'7654321-K', nombre:'Isabel Vidal Cárcamo', email:'i.vidal@universidad.cl',   especialidad:'Facultad de Derecho',pin:''},
+    ];
+    const sampleEvents=[
+      {id:'e-demo1',nombre:'Taller de Innovación Pedagógica',tipo:'Taller',fecha:semana,hora:'09:00',duracion:120,lugar:'Sala A201 — Edificio Académico',cupos:30,relator:'Dra. Sofía Campos',descripcion:'Metodologías activas para el aula universitaria.',estadoPublicacion:'Abierto',fechaApertura:''},
+      {id:'e-demo2',nombre:'Seminario de Inteligencia Artificial en Educación',tipo:'Seminario',fecha:mes,hora:'10:30',duracion:90,lugar:'Auditorio Principal',cupos:60,relator:'Dr. Mateo Araya',descripcion:'Uso de herramientas IA para diseño curricular.',estadoPublicacion:'Publicado',fechaApertura:semana},
+      {id:'e-demo3',nombre:'Charla: Bienestar Docente y Gestión del Estrés',tipo:'Charla',fecha:manana,hora:'15:00',duracion:60,lugar:'Sala de Usos Múltiples',cupos:25,relator:'Mg. Valentina Soto',descripcion:'',estadoPublicacion:'Abierto',fechaApertura:''},
+      {id:'e-demo4',nombre:'Curso de Actualización Disciplinar — Derecho Digital',tipo:'Curso',fecha:ayer,hora:'09:00',duracion:240,lugar:'Sala C302',cupos:20,relator:'Prof. Diego Morales',descripcion:'',estadoPublicacion:'Abierto',fechaApertura:''},
+      {id:'e-demo5',nombre:'Acompañamiento en Diseño de Evaluaciones',tipo:'Acompañamiento',fecha:hoy,hora:'11:00',duracion:90,lugar:'Sala de Reuniones — Piso 3',cupos:10,relator:'Dra. Carla Ruiz',descripcion:'',estadoPublicacion:'Abierto',fechaApertura:''},
+    ];
+    sampleTeachers.forEach(t => { if(!DB.findTeacher(t.rut)) DB.addTeacher(t); });
+    sampleEvents.forEach(e => DB.addEvent({...e, updatedAt: Date.now()}));
+    // Inscripciones de ejemplo
+    const pairs=[['e-demo1','12345678-9'],['e-demo1','9876543-2'],['e-demo1','15678234-6'],
+      ['e-demo3','12345678-9'],['e-demo3','7654321-K'],
+      ['e-demo4','11223344-5'],['e-demo4','15678234-6'],['e-demo4','9876543-2'],
+      ['e-demo5','12345678-9'],['e-demo5','7654321-K']];
+    pairs.forEach(([eid,rut]) => { if(!DB.isReg(eid,rut)) DB.register(eid,rut); });
+    // Asistencias para evento pasado
+    [['e-demo4','11223344-5'],['e-demo4','15678234-6']].forEach(([eid,rut]) => {
+      if(!DB.hasAtt(eid,rut)) DB.markAtt(eid,rut);
+    });
+    DB.closeEvent('e-demo4');
+    setTick&&setTick(t=>t+1);
+    toast('Datos de demo cargados correctamente','success');
+  }
 
   return <div className="fade-in">
     <PageHeader title="Dashboard" subtitle="Resumen general del sistema de capacitaciones"/>
+    {isEmpty&&<div style={{marginBottom:20,padding:'20px 24px',background:'linear-gradient(135deg,#EFF6FF,#F0FDF4)',
+      border:'1px solid #BFDBFE',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+      <div>
+        <div style={{fontSize:15,fontWeight:700,color:'#0F172A',marginBottom:4}}>El sistema no tiene datos aún</div>
+        <div style={{fontSize:13,color:'#64748B'}}>Carga datos de ejemplo para explorar todas las funcionalidades.</div>
+      </div>
+      <Btn onClick={seedDemoData} variant="accent"><Icon name="plus" size={15}/>Cargar datos de demo</Btn>
+    </div>}
+    {defaultCreds&&<div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,
+      padding:'10px 16px',background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:10,fontSize:13,color:'#92400E'}}>
+      <Icon name="warn" size={16}/>
+      <span><strong>Credenciales por defecto activas.</strong> Ve a Configuración → Administrador para cambiarlas antes de distribuir el sistema.</span>
+    </div>}
     {cfg.mode==='googlesheets'&&<div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,
       padding:'8px 14px',background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:8,fontSize:13,color:'#15803D'}}>
       <Icon name="wifi" size={14}/> Google Sheets activo — datos sincronizados en tiempo real
@@ -1753,20 +1839,24 @@ function AdminEventos({navigate,tick,setTick}) {
   </div>;
 }
 
-function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
-  const [tab,setTab]=useState(initTab||'inscritos');
-  const [checkinRut,setCheckinRut]=useState('');
-  const [checkinMsg,setCheckinMsg]=useState(null);
-  const [confirmDel,setConfirmDel]=useState(false);
-  const [showEdit,setShowEdit]=useState(false);
-  const event=DB.event(eventId);
-  if(!event) return <Empty icon="calendar" title="Evento no encontrado"/>;
-  const now=useNow();
-  const regs=DB.eventRegs(eventId),atts=DB.eventAtts(eventId);
-  const canCheck=isPast(event.fecha)||isToday(event.fecha);
+/* ════════════════════════════════════════════════════════════════
+   CHECK-IN PANEL — componente propio (evita violación Rules of Hooks
+   que ocurre cuando se llama useState dentro de un IIFE condicional)
+   ════════════════════════════════════════════════════════════════ */
+function CheckinPanel({eventId, event, regs, atts, tick, setTick}) {
+  const [checkinMode, setCheckinMode] = useState('rut');
+  const [checkinRut,  setCheckinRut]  = useState('');
+  const [checkinMsg,  setCheckinMsg]  = useState(null);
+  const msgC = {success:['#DCFCE7','#15803D'],warning:['#FEF3C7','#B45309'],danger:['#FEE2E2','#B91C1C']};
+
+  const sortedRegs = [...regs].sort((a,b) => {
+    const na=(DB.findTeacher(a.rut)||{}).nombre||a.rut;
+    const nb=(DB.findTeacher(b.rut)||{}).nombre||b.rut;
+    return na.localeCompare(nb,'es');
+  });
 
   async function handleCheckin() {
-    const rut=checkinRut.trim();if(!rut)return;
+    const rut=checkinRut.trim(); if(!rut) return;
     if(!validarRut(rut)){setCheckinMsg({type:'danger',text:'RUT inválido. Verifica el número y el dígito verificador.',teacher:null});return;}
     const cfg=getSPConfig();
     const teacher=DB.findTeacher(rut),isReg=DB.isReg(eventId,rut),hasAtt=DB.hasAtt(eventId,rut);
@@ -1774,12 +1864,106 @@ function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
     if(!isReg){setCheckinMsg({type:'danger',text:'No está inscrito en este evento.',teacher});return;}
     if(cfg.mode==='googlesheets') {
       await GS.addAsistencia({id:'a-'+Date.now(),eid:eventId,rut});
-      GS.addLog('checkin_admin', 'Admin', eventId, `Check-in: ${teacher?.nombre||rut} en "${event.nombre}"`).catch(()=>{});
+      GS.addLog('checkin_admin','Admin',eventId,`Check-in: ${teacher?.nombre||rut} en "${event.nombre}"`).catch(()=>{});
     }
-    DB.markAtt(eventId,rut);setTick(t=>t+1);
+    DB.markAtt(eventId,rut); setTick(t=>t+1);
     setCheckinMsg({type:'success',text:'¡Asistencia registrada!',teacher:teacher||{nombre:rut,especialidad:''}});
     setCheckinRut('');
   }
+
+  async function marcarDesdeListaRut(rut) {
+    const cfg=getSPConfig();
+    const teacher=DB.findTeacher(rut);
+    if(DB.hasAtt(eventId,rut)) return;
+    if(cfg.mode==='googlesheets') {
+      await GS.addAsistencia({id:'a-'+Date.now(),eid:eventId,rut});
+      GS.addLog('checkin_lista','Admin',eventId,`Lista: ${teacher?.nombre||rut}`).catch(()=>{});
+    }
+    DB.markAtt(eventId,rut); setTick(t=>t+1);
+  }
+
+  return <div>
+    <div style={{display:'flex',gap:8,marginBottom:20,justifyContent:'center'}}>
+      {[['rut','Por RUT'],['lista','Lista de inscritos']].map(([m,l])=>(
+        <button key={m} onClick={()=>setCheckinMode(m)} style={{padding:'8px 20px',borderRadius:8,
+          fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .12s',
+          border:'1.5px solid',
+          borderColor:checkinMode===m?'#0D9488':'#E2E8F0',
+          background:checkinMode===m?'#0D9488':'#fff',
+          color:checkinMode===m?'#fff':'#64748B'}}>{l}
+        </button>
+      ))}
+    </div>
+
+    {checkinMode==='rut'&&<div style={{display:'flex',justifyContent:'center'}}>
+      <Card p={32} style={{maxWidth:460,width:'100%',textAlign:'center'}}>
+        <h3 style={{fontSize:17,fontWeight:800,marginBottom:4}}>Registro rápido por RUT</h3>
+        <p style={{fontSize:13,color:'#64748B',marginBottom:20,lineHeight:1.5}}>
+          {event.nombre} · <span style={{color:'#94A3B8'}}>{fmtDateL(event.fecha)}</span>
+        </p>
+        <div style={{display:'flex',gap:10,marginBottom:checkinMsg?16:0}}>
+          <TInput value={checkinRut} onChange={e=>setCheckinRut(e.target.value)}
+            onBlur={()=>{if(checkinRut.trim()&&!checkinRut.includes('@'))setCheckinRut(formatRut(checkinRut.trim()));}}
+            placeholder="12.345.678-9" autoFocus
+            onKeyDown={e=>e.key==='Enter'&&handleCheckin()} style={{fontSize:16,padding:'12px 14px'}}/>
+          <Btn onClick={handleCheckin} variant="accent" size="lg">✓</Btn>
+        </div>
+        {checkinMsg&&<div className="fade-in" style={{padding:'12px 16px',borderRadius:10,textAlign:'left',
+          background:msgC[checkinMsg.type][0],color:msgC[checkinMsg.type][1],marginBottom:4}}>
+          <div style={{fontWeight:700}}>{checkinMsg.type==='success'?'✓ ':checkinMsg.type==='warning'?'⚠ ':'✕ '}{checkinMsg.text}</div>
+          {checkinMsg.teacher&&<div style={{fontSize:13,opacity:.8,marginTop:2}}>{checkinMsg.teacher.nombre}</div>}
+          <button onClick={()=>setCheckinMsg(null)} style={{fontSize:11,opacity:.6,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',color:'inherit',marginTop:4,padding:0}}>Cerrar</button>
+        </div>}
+        <div style={{display:'flex',marginTop:20,borderTop:'1px solid #F1F5F9',paddingTop:16}}>
+          {[{v:regs.length,l:'Inscritos',c:'#1E3A8A'},{v:atts.length,l:'Asistencias',c:'#15803D'},{v:regs.length-atts.length,l:'Pendientes',c:'#B45309'}]
+            .map((s,i)=><div key={i} style={{flex:1,textAlign:'center',borderRight:i<2?'1px solid #F1F5F9':'none'}}>
+              <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
+              <div style={{fontSize:11,color:'#94A3B8',marginTop:2}}>{s.l}</div>
+            </div>)}
+        </div>
+      </Card>
+    </div>}
+
+    {checkinMode==='lista'&&<Card p={0}>
+      <div style={{padding:'14px 20px',borderBottom:'1px solid #F1F5F9',display:'flex',
+        alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{fontSize:14,fontWeight:700}}>{atts.length}/{regs.length} asistencias registradas</div>
+        <div style={{fontSize:12,color:'#94A3B8'}}>Toca "Marcar" para registrar asistencia</div>
+      </div>
+      {sortedRegs.length===0
+        ? <Empty icon="users" title="Sin inscritos"/>
+        : <div>{sortedRegs.map(r=>{
+            const t=DB.findTeacher(r.rut)||{nombre:r.rut,especialidad:'—'};
+            const attended=DB.hasAtt(eventId,r.rut);
+            return <div key={r.id} style={{display:'flex',alignItems:'center',gap:14,padding:'12px 20px',
+              borderBottom:'1px solid #F8FAFC',background:attended?'#F0FDF4':'#fff',transition:'background .15s'}}>
+              <div style={{width:36,height:36,borderRadius:10,flexShrink:0,
+                background:attended?'#DCFCE7':'#F1F5F9',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                {attended?<Icon name="check" size={18} color="#15803D"/>:<Icon name="person" size={18} color="#CBD5E1"/>}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:600,color:'#0F172A',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.nombre}</div>
+                <div style={{fontSize:12,color:'#94A3B8'}}>{t.especialidad}</div>
+              </div>
+              {attended
+                ? <span style={{fontSize:12,fontWeight:600,color:'#15803D',background:'#DCFCE7',padding:'4px 10px',borderRadius:6}}>✓ Asistió</span>
+                : <Btn size="sm" variant="accent" onClick={()=>marcarDesdeListaRut(r.rut)}>Marcar</Btn>}
+            </div>;
+          })}</div>
+      }
+    </Card>}
+  </div>;
+}
+
+function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
+  const [tab,setTab]=useState(initTab||'inscritos');
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [showEdit,setShowEdit]=useState(false);
+  const event=DB.event(eventId);
+  if(!event) return <Empty icon="calendar" title="Evento no encontrado"/>;
+  const now=useNow();
+  const regs=DB.eventRegs(eventId),atts=DB.eventAtts(eventId);
+  const canCheck=isPast(event.fecha)||isToday(event.fecha);
 
   async function handleDelete() {
     const cfg=getSPConfig();
@@ -1835,14 +2019,14 @@ function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
       ${'<scr'+'ipt>'}window.onload=function(){setTimeout(function(){window.print();},400);}${'</scr'+'ipt>'}
       </body></html>`;
     const win = window.open('','_blank');
-    if(!win){ alert('El navegador bloqueó la ventana. Permite ventanas emergentes e intenta de nuevo.'); return; }
+    if(!win){ toast('El navegador bloqueó la ventana. Permite ventanas emergentes e intenta de nuevo.','warning'); return; }
     win.document.open(); win.document.write(html); win.document.close();
   }
 
   const isClosed = DB.isClosed(eventId);
   const tabList=[{id:'inscritos',label:`Inscritos (${regs.length})`},{id:'asistencia',label:`Asistencia (${atts.length})`},
     ...(canCheck&&!isClosed?[{id:'checkin',label:'Check-in kiosco'}]:[]),
-    {id:'exportar',label:'Exportar'}];  const msgC={success:['#DCFCE7','#15803D'],warning:['#FEF3C7','#B45309'],danger:['#FEE2E2','#B91C1C']};
+    {id:'exportar',label:'Exportar'}];
 
   return <div className="fade-in">
     <PageHeader back="Volver a Eventos" onBack={()=>navigate('a-eventos')} title={event.nombre}
@@ -1927,111 +2111,7 @@ function AdminEventoDetail({eventId,initTab,navigate,tick,setTick}) {
             <Td>{t.especialidad}</Td><Td>{t.email}</Td><Td>{fmtDate(a.fecha)}</Td>
           </tr>);})}/>
     </Card>}
-    {tab==='checkin'&&(()=>{
-      const [checkinMode,setCheckinMode]=React.useState('rut'); // 'rut' | 'lista'
-      const sortedRegs=[...regs].sort((a,b)=>{
-        const na=(DB.findTeacher(a.rut)||{}).nombre||a.rut;
-        const nb=(DB.findTeacher(b.rut)||{}).nombre||b.rut;
-        return na.localeCompare(nb,'es');
-      });
-
-      async function marcarDesdeListaRut(rut) {
-        const cfg=getSPConfig();
-        const teacher=DB.findTeacher(rut);
-        if(DB.hasAtt(eventId,rut)) return;
-        if(cfg.mode==='googlesheets') {
-          await GS.addAsistencia({id:'a-'+Date.now(),eid:eventId,rut});
-          GS.addLog('checkin_lista','Admin',eventId,`Lista: ${teacher?.nombre||rut}`).catch(()=>{});
-        }
-        DB.markAtt(eventId,rut); setTick(t=>t+1);
-      }
-
-      return <div>
-        {/* Toggle modo */}
-        <div style={{display:'flex',gap:8,marginBottom:20,justifyContent:'center'}}>
-          {[['rut','Por RUT'],['lista','Lista de inscritos']].map(([m,l])=>(
-            <button key={m} onClick={()=>setCheckinMode(m)} style={{padding:'8px 20px',borderRadius:8,
-              fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .12s',
-              border:'1.5px solid',
-              borderColor:checkinMode===m?'#0D9488':'#E2E8F0',
-              background:checkinMode===m?'#0D9488':'#fff',
-              color:checkinMode===m?'#fff':'#64748B'}}>{l}
-            </button>
-          ))}
-        </div>
-
-        {checkinMode==='rut'&&<div style={{display:'flex',justifyContent:'center'}}>
-          <Card p={32} style={{maxWidth:460,width:'100%',textAlign:'center'}}>
-            <h3 style={{fontSize:17,fontWeight:800,marginBottom:4}}>Registro rápido por RUT</h3>
-            <p style={{fontSize:13,color:'#64748B',marginBottom:20,lineHeight:1.5}}>
-              {event.nombre} · <span style={{color:'#94A3B8'}}>{fmtDateL(event.fecha)}</span>
-            </p>
-            <div style={{display:'flex',gap:10,marginBottom:checkinMsg?16:0}}>
-              <TInput value={checkinRut} onChange={e=>setCheckinRut(e.target.value)}
-                onBlur={()=>{if(checkinRut.trim()&&!checkinRut.includes('@'))setCheckinRut(formatRut(checkinRut.trim()));}}
-                placeholder="12.345.678-9" autoFocus
-                onKeyDown={e=>e.key==='Enter'&&handleCheckin()} style={{fontSize:16,padding:'12px 14px'}}/>
-              <Btn onClick={handleCheckin} variant="accent" size="lg">✓</Btn>
-            </div>
-            {checkinMsg&&<div className="fade-in" style={{padding:'12px 16px',borderRadius:10,textAlign:'left',
-              background:msgC[checkinMsg.type][0],color:msgC[checkinMsg.type][1],marginBottom:4}}>
-              <div style={{fontWeight:700}}>{checkinMsg.type==='success'?'✓ ':checkinMsg.type==='warning'?'⚠ ':'✕ '}{checkinMsg.text}</div>
-              {checkinMsg.teacher&&<div style={{fontSize:13,opacity:.8,marginTop:2}}>{checkinMsg.teacher.nombre}</div>}
-              <button onClick={()=>setCheckinMsg(null)} style={{fontSize:11,opacity:.6,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',color:'inherit',marginTop:4,padding:0}}>Cerrar</button>
-            </div>}
-            <div style={{display:'flex',marginTop:20,borderTop:'1px solid #F1F5F9',paddingTop:16}}>
-              {[{v:regs.length,l:'Inscritos',c:'#1E3A8A'},{v:atts.length,l:'Asistencias',c:'#15803D'},{v:regs.length-atts.length,l:'Pendientes',c:'#B45309'}]
-                .map((s,i)=><div key={i} style={{flex:1,textAlign:'center',borderRight:i<2?'1px solid #F1F5F9':'none'}}>
-                  <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
-                  <div style={{fontSize:11,color:'#94A3B8',marginTop:2}}>{s.l}</div>
-                </div>)}
-            </div>
-          </Card>
-        </div>}
-
-        {checkinMode==='lista'&&<Card p={0}>
-          <div style={{padding:'14px 20px',borderBottom:'1px solid #F1F5F9',display:'flex',
-            alignItems:'center',justifyContent:'space-between'}}>
-            <div style={{fontSize:14,fontWeight:700}}>
-              {atts.length}/{regs.length} asistencias registradas
-            </div>
-            <div style={{fontSize:12,color:'#94A3B8'}}>
-              Toca "Marcar" para registrar asistencia
-            </div>
-          </div>
-          {sortedRegs.length===0
-            ? <Empty icon="users" title="Sin inscritos"/>
-            : <div>{sortedRegs.map(r=>{
-                const t=DB.findTeacher(r.rut)||{nombre:r.rut,especialidad:'—'};
-                const attended=DB.hasAtt(eventId,r.rut);
-                return <div key={r.id} style={{display:'flex',alignItems:'center',gap:14,padding:'12px 20px',
-                  borderBottom:'1px solid #F8FAFC',background:attended?'#F0FDF4':'#fff',
-                  transition:'background .15s'}}>
-                  <div style={{width:36,height:36,borderRadius:10,flexShrink:0,
-                    background:attended?'#DCFCE7':'#F1F5F9',
-                    display:'flex',alignItems:'center',justifyContent:'center'}}>
-                    {attended
-                      ? <Icon name="check" size={18} color="#15803D"/>
-                      : <Icon name="person" size={18} color="#CBD5E1"/>}
-                  </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:600,color:'#0F172A',whiteSpace:'nowrap',
-                      overflow:'hidden',textOverflow:'ellipsis'}}>{t.nombre}</div>
-                    <div style={{fontSize:12,color:'#94A3B8'}}>{t.especialidad}</div>
-                  </div>
-                  {attended
-                    ? <span style={{fontSize:12,fontWeight:600,color:'#15803D',
-                        background:'#DCFCE7',padding:'4px 10px',borderRadius:6}}>✓ Asistió</span>
-                    : <Btn size="sm" variant="accent"
-                        onClick={()=>marcarDesdeListaRut(r.rut)}>
-                        Marcar
-                      </Btn>}
-                </div>;
-              })}</div>
-          }
-        </Card>}
-      </div>;
-    })()}
+    {tab==='checkin'&&<CheckinPanel eventId={eventId} event={event} regs={regs} atts={atts} tick={tick} setTick={setTick}/>}
     {tab==='exportar'&&<Card p={0}>
       <div style={{padding:28,display:'flex',flexDirection:'column',gap:16,alignItems:'flex-start'}}>
         <div>
@@ -2204,7 +2284,7 @@ function DocenteEventos({rut,tick,setTick}) {
     if(DB.isReg(event.id,rut)) return;
     if(DB.eventRegs(event.id).length >= event.cupos) return;
     if((regsByDate[event.fecha]||0) >= MAX_POR_DIA) {
-      alert(`Ya tienes ${MAX_POR_DIA} inscripción${MAX_POR_DIA!==1?'es':''} para el ${fmtDateL(event.fecha)}. No puedes inscribirte en más eventos ese día.`);
+      toast(`Ya tienes ${MAX_POR_DIA} inscripción${MAX_POR_DIA!==1?'es':''} para el ${fmtDateL(event.fecha)}. No puedes inscribirte en más eventos ese día.`,'warning');
       return;
     }
     sessionStorage.setItem(lockKey, '1');
@@ -2220,7 +2300,7 @@ function DocenteEventos({rut,tick,setTick}) {
             // Respuesta definitiva del servidor: no registrar localmente
             if(result.error === 'sin_cupos') {
               setTick(t=>t+1); // refresca UI para reflejar cupos reales
-              alert('Lo sentimos, el evento ya no tiene cupos disponibles.');
+              toast('Lo sentimos, el evento ya no tiene cupos disponibles.','error');
               return;
             }
             if(result.error === 'ya_inscrito') {
@@ -2234,6 +2314,7 @@ function DocenteEventos({rut,tick,setTick}) {
             `${teacher.nombre||rut} se inscribió en "${event.nombre}"`).catch(()=>{});
         }
         DB.register(event.id,rut); setTick(t=>t+1);
+        toast('Inscripción confirmada en "'+event.nombre+'"','success');
       } else { setRegForm({nombre:'',email:'',especialidad:''}); setShowForm(event); }
     } finally { sessionStorage.removeItem(lockKey); }
   }
@@ -2243,12 +2324,12 @@ function DocenteEventos({rut,tick,setTick}) {
     const lockKey = 'reg_lock_' + showForm.id + '_' + rut;
     if(sessionStorage.getItem(lockKey)) return;
     if(DB.eventRegs(showForm.id).length >= showForm.cupos) {
-      setShowForm(null); alert('Lo sentimos, el evento se llenó mientras completabas el formulario.'); return;
+      setShowForm(null); toast('Lo sentimos, el evento se llenó mientras completabas el formulario.','error'); return;
     }
     sessionStorage.setItem(lockKey, '1');
     try {
       if(DB.eventRegs(showForm.id).length >= showForm.cupos) {
-        setShowForm(null); alert('Lo sentimos, el evento se llenó mientras completabas el formulario.'); return;
+        setShowForm(null); toast('Lo sentimos, el evento se llenó mientras completabas el formulario.','error'); return;
       }
       const cfg=getSPConfig();
       if(!DB.findTeacher(rut)) {
@@ -2261,7 +2342,7 @@ function DocenteEventos({rut,tick,setTick}) {
         if(result.ok === false) {
           if(result.error === 'sin_cupos') {
             setShowForm(null); setTick(t=>t+1);
-            alert('Lo sentimos, el evento ya no tiene cupos disponibles.');
+            toast('Lo sentimos, el evento ya no tiene cupos disponibles.','error');
             return;
           }
           // ya_inscrito u otros: sincronizar localmente
@@ -2270,6 +2351,7 @@ function DocenteEventos({rut,tick,setTick}) {
           `${regForm.nombre||rut} se inscribió en "${showForm.nombre}" (nuevo docente)`).catch(()=>{});
       }
       DB.register(showForm.id,rut); setTick(t=>t+1); setShowForm(null);
+      toast('Inscripción confirmada en "'+showForm.nombre+'"','success');
     } finally { sessionStorage.removeItem(lockKey); }
   }
 
@@ -2373,13 +2455,14 @@ function DocenteInscripciones({rut,tick,setTick}) {
     DB.unregister(eventId,rut);
     setConfirmCancel(null);
     setTick(t=>t+1);
+    toast('Inscripción cancelada','info');
   }
 
   async function confirmarAsistencia(eventId) {
     if(DB.hasAtt(eventId,rut)) return;
     const ev = DB.event(eventId);
     if(!ev || !isCheckInOpen(ev, new Date())) {
-      alert('La ventana de registro ya cerró. Contacta al administrador si necesitas registrar tu asistencia.');
+      toast('La ventana de registro ya cerró. Contacta al administrador si necesitas registrar tu asistencia.','warning');
       return;
     }
     DB.markAtt(eventId,rut);
@@ -2393,6 +2476,7 @@ function DocenteInscripciones({rut,tick,setTick}) {
     }
     setCheckinOk(p=>({...p,[eventId]:true}));
     setTick(t=>t+1);
+    toast('¡Asistencia confirmada!','success');
   }
 
   return <div className="fade-in">
@@ -2506,7 +2590,7 @@ function DocenteFicha({rut}) {
     ].join('');
 
     const win = window.open('','_blank');
-    if(!win){ alert('El navegador bloqueó la ventana del PDF. Permite ventanas emergentes para este sitio e intenta de nuevo.'); return; }
+    if(!win){ toast('El navegador bloqueó la ventana del PDF. Permite ventanas emergentes para este sitio e intenta de nuevo.','warning'); return; }
     const doc = win.document;
     doc.open();
     doc.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>');
@@ -2663,7 +2747,7 @@ function AdminShell({onLogout}) {
   }
 
   const mainNav=view==='a-evento'?'a-eventos':view==='a-docente'?'a-docentes':view;
-  const content=view==='a-dashboard'?<AdminDashboard navigate={navigate} tick={tick}/>
+  const content=view==='a-dashboard'?<AdminDashboard navigate={navigate} tick={tick} setTick={setTick}/>
     :view==='a-eventos'?<AdminEventos navigate={navigate} tick={tick} setTick={setTick}/>
     :view==='a-evento'?<AdminEventoDetail eventId={eventId} initTab={eventTab} navigate={navigate} tick={tick} setTick={setTick}/>
     :view==='a-docentes'?<AdminDocentes navigate={navigate} tick={tick} setTick={setTick}/>
@@ -2674,7 +2758,7 @@ function AdminShell({onLogout}) {
     <Sidebar nav={ADMIN_NAV} active={mainNav} onNav={v=>navigate(v)} onLogout={onLogout}
       color="#1E3A8A" subtitle="Administrador" title="Capacitaciones Docentes" isAdmin={true}
       onSettings={()=>setShowSettings(true)} showMonitor={showMonitor}
-      onMonitor={DEV_MODE?()=>setShowMonitor(m=>!m):null}
+      onMonitor={null}
       onSync={handleSync} syncing={syncing} lastSync={lastSync} staleSync={staleSync}/>
     <div style={{flex:1,overflow:'auto'}}>
       {staleSync&&getSPConfig().mode==='googlesheets'&&<div style={{
@@ -2711,6 +2795,7 @@ function AdminShell({onLogout}) {
     </nav>
     <SettingsPanel open={showSettings} onClose={()=>setShowSettings(false)}/>
     {showMonitor&&<APIMonitor onClose={()=>setShowMonitor(false)}/>}
+    <Toasts/>
   </div>;
 }
 
@@ -2745,6 +2830,7 @@ function DocenteShell({rut,onLogout}) {
         <Icon name="logout" size={20}/>Salir
       </button>
     </nav>
+    <Toasts/>
   </div>;
 }
 
@@ -2816,7 +2902,6 @@ function AdminLogin({onSuccess, onBack}) {
               fontSize:14,fontFamily:'inherit',outline:'none',width:'100%',color:'#0F172A'}}/>
           </Field>
         </div>
-        {err&&<div style={{fontSize:12,color:'#EF4444',marginTop:8}}>{err}</div>}
         <Btn onClick={handleLogin} full size="lg" style={{marginTop:20,background:'#1E3A8A'}}>
           Ingresar
         </Btn>
